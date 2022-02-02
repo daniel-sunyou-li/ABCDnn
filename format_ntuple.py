@@ -86,7 +86,7 @@ class ToyTree:
       "AK4HT": { "VALUE": [ 500. ], "CONDITION": [ ">" ] },
       "DataPastTriggerX": { "VALUE": [ 1 ], "CONDITION": [ "==" ] },
       "MCPastTriggerX": { "VALUE": [ 1 ], "CONDITION": [ "==" ] },
-      "isTraining": { "VALUE": [ "1 || 2" ], "CONDITION": [ "==" ] },
+      #"isTraining": { "VALUE": [ "1" ], "CONDITION": [ "==" ] },
     }
     
     for variable in self.variables:

@@ -11,7 +11,7 @@ sourceDir = {
   "BRUX": "root://brux30.hep.brown.edu:1094//isilon/hadoop/store/group/bruxljm/"
 }
 sampleDir = {
-  year: "FWLJMET102X_1lep{}_Oct2019_4t_053121_step3_40vars_6j_NJetsCSV/nominal/".format( year ) for year in [ "2016", "2017", "2018" ]
+  year: "FWLJMET102X_1lep{}_Oct2019_4t_{}_step3_40vars_6j_NJetsCSV/nominal/".format( year, postfix ) for year in [ "2016", "2017", "2018" ]
 }
 
 variables = {
@@ -21,7 +21,7 @@ variables = {
     "LIMIT": [0.,5000.],
     "LATEX": "H_T\ \mathrm{(GeV)}"
   },
-  "DNN_5j_1to50_S2B10": {
+  "DNN_5j_1to50": {
     "CATEGORICAL": False,
     "TRANSFORM": True,
     "LIMIT": [0.,1.],
