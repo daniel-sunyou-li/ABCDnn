@@ -18,25 +18,25 @@ variables = {
   "AK4HT": {
     "CATEGORICAL": False,
     "TRANSFORM": True,
-    "LIMIT": [0.,5000.],
+    "LIMIT": [0.,2000.],
     "LATEX": "H_T\ \mathrm{(GeV)}"
   },
-  "DNN_5j_1to50": {
+  "BDT": {
     "CATEGORICAL": False,
     "TRANSFORM": True,
-    "LIMIT": [0.,1.],
-    "LATEX": "DNN_{1-50}"
+    "LIMIT": [-1.,1.],
+    "LATEX": "BDT"
   },
   "NJets_JetSubCalc": {
     "CATEGORICAL": True,
     "TRANSFORM": False,
-    "LIMIT": [6,10],
+    "LIMIT": [0,100],
     "LATEX": "N_j"
   },
-  "NJetsCSV_JetSubCalc": {
+  "NJetsCSV_MultiLepCalc": {
     "CATEGORICAL": True,
     "TRANSFORM": False,
-    "LIMIT": [2,3],
+    "LIMIT": [0,100],
     "LATEX": "N_b"
   }
 }
@@ -65,21 +65,21 @@ regions = {
 
 params = {
   "EVENTS": {
-    "SOURCE": os.path.join( data_path, "ttbar_2017_mc.root" ),
-    "TARGET": os.path.join( data_path, "singleLep_2017_data.root" ),
+    "SOURCE": os.path.join( data_path, "ttbar_17_mc.root" ),
+    "TARGET": os.path.join( data_path, "singleLep_17_data.root" ),
     "MCWEIGHT": None
   },
   "MODEL": { # parameters for setting up the NAF model
-    "NODES_COND": 64,
+    "NODES_COND": 100,
     "HIDDEN_COND": 4,
-    "NODES_TRANS": 1,
-    "LRATE": 1.0e-3,
+    "NODES_TRANS": 16,
+    "LRATE": 1.0e-4,
     "DECAY": 1e-1,
     "GAP": 1000.,
-    "DEPTH": 3,
-    "REGULARIZER": "L1",
-    "ACTIVATION": "softplus",
-    "BETA1": 0.90,
+    "DEPTH": 1,
+    "REGULARIZER": "L1+L2",
+    "ACTIVATION": "relu",
+    "BETA1": 0.999,
     "BETA2": 0.90,
     "MINIBATCH": 2**12,
     "RETRAIN": True,
@@ -88,11 +88,13 @@ params = {
     "VERBOSE": False   
   },
   "TRAIN": {
-    "EPOCHS": 20000,
-    "PATIENCE": 5000,
+    "EPOCHS": 4000,
+    "PATIENCE": 4000,
     "SPLIT": 0.25,
-    "MONITOR": 1000,
+    "MONITOR": 100,
+    "PERIODIC SAVE": True,  # saves model at each epoch step according to "MONITOR" 
     "SHOWLOSS": True,
+    "EARLY STOP": False,    # early stop if validation loss begins diverging
     "SAVEHP": True
   },
   "PLOT": {

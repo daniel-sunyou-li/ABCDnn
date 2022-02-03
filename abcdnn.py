@@ -459,7 +459,7 @@ class ABCDnn(object):
       "INPUTSIGMAS": sigmas_list
     }
     
-    with open( os.path.join( self.savedir, "hyperparams.json" ), "w" ) as f:
+    with open( os.path.join( self.savedir, "{}.json".format( self.model_tag ) ), "w" ) as f:
       f.write( write_json( params, indent = 2 ) )
     #pickle.dump( params, open( os.path.join( self.savedir, "hyperparams.pkl" ), "wb" ) )
 
@@ -573,31 +573,33 @@ class ABCDnn(object):
 
     return glossv_trn, glossv_val, mmdloss_trn, mmdloss_val
 
-  def train( self, steps = 10000, monitor = 1000, patience = 100, early_stopping = True, split = 0.25, hpo = False ):
+  def train( self, steps = 10000, monitor = 1000, patience = 100, early_stopping = True, split = 0.25, hpo = False, periodic_save = False ):
     # need to update this to use a validation set
     print( "{:<5} / {:<14} / {:<14} / {:<14}".format( "Epoch", "MMD (Train)", "MMD (Val)", "Min MMD (Val)" ) ) 
     impatience = 0      # don't edit
     stop_train = False  # don't edit
     self.minepoch = 0
-    save_counter = 0
+    save_counter = 0    # edit so you aren't saving every time the model improves --> takes too much time
     for i in range( steps ):
       source, target, batchweight = self.get_next_batch( split = split )
+      # train the model on this batch
       glossv_trn, glossv_val, mmdloss_trn, mmdloss_val  = self.train_step( source, target, split, batchweight )
       # currently not using glossv because mmdloss is a scalar and glossv is the mean of mmdloss
       # generator update
       if i == 0: self.minloss = mmdloss_val
+      # early stopping on validation implementation
       else: 
-        if mmdloss_val.numpy() < self.minloss.numpy(): 
+        if mmdloss_val.numpy() < self.minloss.numpy():
           self.minepoch = i
-          impatience = 0
-          if not hpo:
-            if save_counter > 10 or mmdloss_val < 0.5*self.minloss:
+          impatience = 0 # reset the impatience counter
+          if not hpo: # don't save models during hyper parameter optimization training to save time
+            if save_counter > monitor or mmdloss_val.numpy() < 0.5 * self.minloss.numpy(): # reduce number of saved models
               save_counter = 0
               self.checkpointmgr.save()
               self.model.save_weights( "./Results/{}".format( self.model_tag ) )
           self.minloss = mmdloss_val
-        elif impatience > patience:
-          print( ">> Early stopping after {} epochs without improvement in loss (min loss = {:.2e})".format( i, self.minloss ) )
+        elif impatience > patience and early_stopping:
+          print( "[WARN] Early stopping after {} epochs without improvement in loss (min loss = {:.3e})".format( i, self.minloss ) )
           stop_train = True
         else:
           impatience += 1
@@ -613,9 +615,15 @@ class ABCDnn(object):
           glossv_trn.numpy(), glossv_val.numpy(),
           mmdloss_trn, mmdloss_val
         )
+        if periodic_save: self.model.save_weights( "./Results/{}_EPOCH{}".format( self.model_tag, i ) )
       self.checkpoint.global_step.assign_add(1) # increment counter
       save_counter += 1
-      if stop_train: break
+      if stop_train:
+        if periodic_save: self.model.save_weights( "./Results/{}_EPOCH{}".format( self.model_tag, i ) ) 
+        break
+    if not early_stopping: 
+      self.checkpointmgr.save()
+      self.model.save_weights( "./Results/{}".format( self.model_tag ) )
     print( ">> Minimum loss (validation) of {:.3e} on epoch {}".format( self.minloss, self.minepoch ) )
     self.save_training_monitor()
 
@@ -757,9 +765,8 @@ class ABCDnn_training(object):
     self.model.setmcdata( self.normedinputsmc_bkg, eventweight = self.bkgmcweight, verbose = verbose )
     pass
 
-  def train( self, steps = 10000, monitor = 1000, patience = 100, early_stopping = True, split = 0.25, display_loss = False, save_hp = False, hpo = False ):
-    self.model.train( steps = steps, monitor = monitor, patience = patience, split = split, early_stopping = early_stopping, hpo = hpo )
-    #if display_loss: self.model.display_training()
+  def train( self, steps = 10000, monitor = 1000, patience = 100, early_stopping = True, split = 0.25, display_loss = False, save_hp = False, hpo = False, periodic_save = False ):
+    self.model.train( steps = steps, monitor = monitor, patience = patience, split = split, early_stopping = early_stopping, hpo = hpo, periodic_save = periodic_save )
     if save_hp: self.model.savehyperparameters( self.inputmeans, self.inputsigma )
     pass
 
