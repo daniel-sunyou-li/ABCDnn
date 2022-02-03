@@ -5,19 +5,18 @@ condorDir=${1}
 sampleNameIn=${2}
 sampleNameOut=${3}
 sampleDir=${4}
-weight=${5}
-tag=${6}
+checkpoints=${5}
 
-xrdcp -s $condorDir/CMSSW946_ttt.tgz .
+xrdcp -s $condorDir/ABCDnn.tgz .
 tar -xf ABCDnn.tgz
 rm ABCDnn.tgz
 
-cd CMSSW_9_4_6_patch1/src/TTT-singleLep/ABCDnn/
+cd CMSSW_10_6_19/src/ABCDnn/
 
-source /cvmfs/cms.cern.ch/cmsset_default.csh
+source /cvmfs/cms.cern.ch/cmsset_default.sh
 cmsenv
-source /cvmfs/sft.cern.ch/lcg/views/LCG_98/x86_64-centos7-gcc8-opt/setup.csh
+source /cvmfs/sft.cern.ch/lcg/views/LCG_98/x86_64-centos7-gcc8-opt/setup.sh
 
-python remote_abcdnn.py -j Results/hyperparams.json -s $condorDir/$sampleDir/$tag/$sampleNameIn -c Results/$weight 
+python remote_abcdnn.py -s $sampleDir/$sampleNameIn -c $checkpoints
 
-xrdcp -f $sampleNameOut $condorDir/$sampleDir 
+xrdcp -f $sampleNameOut $condorDir/$sampleDir

@@ -20,6 +20,7 @@ parser.add_argument( "-hpo", "--hpo", action = "store_true" )
 parser.add_argument( "-r", "--randomize", action = "store_true" )
 parser.add_argument( "-v", "--verbose", action = "store_true" )
 parser.add_argument( "-m", "--modeltag", default = "best_model" )
+parser.add_argument( "-d", "--disc_tag", default = "ABCDnn" )
 args = parser.parse_args()
 
 if args.source != "": config.params[ "EVENTS" ][ "SOURCE" ] = args.source
@@ -63,6 +64,7 @@ abcdnn_.setup_model(
   beta2 = hp[ "BETA2" ],
   minibatch = config.params[ "MODEL" ][ "MINIBATCH" ],
   savedir = config.params[ "MODEL" ][ "SAVEDIR" ],
+  disc_tag = args.disc_tag,
   seed = config.params[ "MODEL" ][ "SEED" ],
   verbose = config.params[ "MODEL" ][ "VERBOSE" ],
   model_tag = args.modeltag,

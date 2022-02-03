@@ -328,7 +328,7 @@ class ABCDnn(object):
   def __init__( self, inputdim_categorical_list, inputdim, nodes_cond, hidden_cond,
                nodes_trans, minibatch, activation, regularizer,
                depth, lr, gap, conddim, beta1, beta2, decay,
-               retrain, savedir, savefile, 
+               retrain, savedir, savefile, disc_tag, 
                seed, permute, verbose, model_tag ):
     self.inputdim_categorical_list = inputdim_categorical_list
     self.inputdim = inputdim
@@ -350,6 +350,7 @@ class ABCDnn(object):
     self.retrain = retrain
     self.savedir = savedir
     self.savefile = savefile
+    self.disc_tag = disc_tag,
     self.global_step = tf.Variable( 0, name = "global_step" )
     self.monitor_record = []
     self.seed = seed 
@@ -455,6 +456,7 @@ class ABCDnn(object):
       "BETA1": self.beta1, 
       "BETA2": self.beta2, 
       "MINIBATCH": self.minibatch,
+      "DISC TAG": self.disc_tag,
       "INPUTMEANS": means_list,
       "INPUTSIGMAS": sigmas_list
     }
@@ -713,7 +715,7 @@ class ABCDnn_training(object):
           nodes_cond = 8, hidden_cond = 1, nodes_trans = 8, minibatch = 64, lr = 5.0e-3,
           depth = 1, activation = "swish", regularizer = "None", decay = 1e-1,
           gap = 1000., beta1 = 0.9, beta2 = 0.999,
-          savedir = "/ABCDNN/", savefile = "abcdnn.pkl", mc_weight = None, 
+          savedir = "/ABCDNN/", savefile = "abcdnn.pkl", disc_tag = "ABCDnn", mc_weight = None, 
           retrain = False, seed = 100, permute = True, model_tag = "best_model", verbose = False
         ):
     self.nodes_cond = nodes_cond    # (int) number of nodes in conditional layer(s)
@@ -730,6 +732,7 @@ class ABCDnn_training(object):
     self.activation = activation    # (str) activation function for conditional layers
     self.savedir = savedir          # (str) save directory for output results
     self.savefile = savefile        # (str) save file name for output results
+    self.disc_tag = disc_tag        # (str) tag to add to transformed variable name
     self.seed = seed                # (int) RNG seed
     self.retrain = retrain          # (bool) start a new training or continue from where left-off
     self.mc_weight = mc_weight      # (str) weight MC values according to xsec
@@ -755,6 +758,7 @@ class ABCDnn_training(object):
       retrain = self.retrain, 
       savedir = self.savedir, 
       savefile = self.savefile,
+      disc_tag = self.disc_tag,
       seed = self.seed, 
       permute = self.permute, 
       model_tag = self.model_tag,
