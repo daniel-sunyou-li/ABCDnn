@@ -53,6 +53,7 @@ def NAF( inputdim, conddim, activation, regularizer, nodes_cond, hidden_cond, no
       net1 = x
       condnet = xcondin
       for iv in range( hidden_cond ):
+        condnet = layers.Dropout( 0.2 )( condnet )
         condnet = layers.Dense( nodes_cond, activation = activation_key[ activation ], kernel_regularizer = regularizer_key[ regularizer ], name = "COND_DENSE_{}_{}_{}".format( idepth, i, iv ) )( condnet )
       w1 = layers.Dense( nodes_trans, activation = tf.nn.softplus, name = "SIGMOID_WEIGHT_{}_{}".format( idepth, i ) )(condnet ) # has to be softplus for output to be >0
       b1 = layers.Dense( nodes_trans, activation = None, name = "SIGMOID_BIAS_{}_{}".format( idepth, i ) )( condnet )
@@ -131,13 +132,9 @@ class OneHotEncoder_int( object ):
   def applylimit( self, categoricalinputdata ):
     if self.lowerlimit is None:
       self.lowerlimit = np.min( categoricalinputdata, axis=0 )
-    else:
-      self.lowerlimit = np.maximum( self.lowerlimit, np.min( categoricalinputdata, axis = 0 ) )
     
     if self.upperlimit is None:
       self.upperlimit = np.max( categoricalinputdata, axis = 0 )
-    else:
-      self.upperlimit = np.minimum( self.upperlimit, np.max( categoricalinputdata, axis = 0 ) )
 
     lowerlimitapp = np.maximum( categoricalinputdata, self.lowerlimit )
     limitapp = np.minimum( lowerlimitapp, self.upperlimit )
@@ -436,7 +433,7 @@ class ABCDnn(object):
     self.categoricals_mc, self.categorical_mc_indices_grouped = self.category_sorted( self.mcnumpydata, verbose )
     pass
 
-  def savehyperparameters(self, means, sigmas ):
+  def savehyperparameters(self, transfer, transfer_err, means, sigmas ):
     """Write hyper parameters into file
     """
     means_list = [ str( mean ) for mean in means[0] ]
@@ -457,6 +454,8 @@ class ABCDnn(object):
       "BETA2": self.beta2, 
       "MINIBATCH": self.minibatch,
       "DISC TAG": self.disc_tag,
+      "TRANSFER": transfer,
+      "TRANSFER ERR": transfer_err,
       "INPUTMEANS": means_list,
       "INPUTSIGMAS": sigmas_list
     }
@@ -606,7 +605,7 @@ class ABCDnn(object):
         else:
           impatience += 1
       if i % monitor == 0:
-        print( "{:<5}   {:<14.3e}   {:<14.3e}    {:<14.3e}".format( 
+        print( "{:<5}   {:<14.3e}   {:<14.3e}   {:<14.3e}".format( 
           self.checkpoint.global_step.numpy(),
           mmdloss_trn.numpy(),
           mmdloss_val.numpy(),
@@ -767,12 +766,9 @@ class ABCDnn_training(object):
 
     self.model.setrealdata( self.normedinputs_bkg, verbose = verbose )
     self.model.setmcdata( self.normedinputsmc_bkg, eventweight = self.bkgmcweight, verbose = verbose )
-    pass
 
-  def train( self, steps = 10000, monitor = 1000, patience = 100, early_stopping = True, split = 0.25, display_loss = False, save_hp = False, hpo = False, periodic_save = False ):
+  def train( self, steps = 10000, monitor = 1000, patience = 100, early_stopping = True, split = 0.25, display_loss = False, hpo = False, periodic_save = False ):
     self.model.train( steps = steps, monitor = monitor, patience = patience, split = split, early_stopping = early_stopping, hpo = hpo, periodic_save = periodic_save )
-    if save_hp: self.model.savehyperparameters( self.inputmeans, self.inputsigma )
-    pass
 
   def validate( self ):
     self.model.checkpoint.restore( self.savedir )
@@ -785,8 +781,6 @@ class ABCDnn_training(object):
       self.fakelist.append( xgen )
     self.fakedata = np.vstack( self.fakelist )
     self.fakedata = self.fakedata * self.inputsigma[ :, :self.inputdim ] + self.inputmeans[ :, :self.inputdim ]
-
-    pass
 
   def evaluate_regions( self, hpo = False, verbose = True ):
     self.select = {
@@ -887,217 +881,21 @@ class ABCDnn_training(object):
 
         i += 1
       
-    
-
   def extended_ABCD( self ):
     # compute the norm of the raw data
     dA, dB, dC, dD, dX, dY = self.count[ "DATA" ][ "A" ], self.count[ "DATA" ][ "B" ], self.count[ "DATA" ][ "C" ], self.count[ "DATA" ][ "D" ], self.count[ "DATA" ][ "X" ], self.count[ "DATA" ][ "Y" ]
-    self.data_norm = dB * dX * dC**2 / ( dA**2 * dY )
-    self.sigma_data_norm = np.sqrt( 1/dB + 1/dX + 1/dY + 4/dC + 4/dA ) * self.data_norm
-    print( "Ext. ABCD Prediction: {:.2f} pm {:.2f}".format( self.data_norm, self.sigma_data_norm ) )
+    mD = self.count[ "MC" ][ "D" ]
+    self.data_norm = float( dB * dX * dC**2 / ( dA**2 * dY ) )
+    self.sigma_data_norm = np.sqrt( 1./dB + 1./dX + 1./dY + 4./dC + 4./dA ) * self.data_norm
+    print( "Ext. ABCD Prediction: {:.3f} pm {:.3f}".format( self.data_norm, self.sigma_data_norm ) )
     print( "True Count: {}".format( dD ) )
+    self.transfer = float( self.data_norm ) / float( mD )
+    self.transfer_err = np.sqrt( ( self.sigma_data_norm / mD )**2 + ( self.data_norm * np.sqrt( mD ) / mD**2 )**2 )
+    print( "Transfer Factor ( Ext. ABCD / MC ) = {:.3e} pm {:.3e}".format( 
+      self.transfer,
+      self.transfer_err
+    ) )
+    print( ">> Saving hyper parameters" )
+    self.model.savehyperparameters( self.transfer, self.transfer_err, self.inputmeans, self.inputsigma )
     pass
 
-  def plot_ratio( self, 
-      plot_data = True, plot_mc = False, plot_cr = False, plot_sr = True, 
-      errorbars = True, normed = True, ratio = [ 0.25, 2.0 ], 
-      yscales = ["linear"], n_bins = 20, plot_ks = False, save = False
-    ):
-    vars = [ str( var ) for var in self.variables ]
-  
-    for yscale in yscales:
-      for var in self.variables:
-        i = 0
-        if self.variables[ var ][ "TRANSFORM" ] == True:
-          for _fakedata, _rawdata, _rawmc, _mcweight, _plottext in zip( self.fakedata, self.rawdata, self.rawmc, self.mcweight, self.plottext ):
-            if not plot_cr and self.region[i] in [ "A", "B", "C", "X", "Y" ]: continue
-            if not plot_sr and self.region[i] == "D": continue
-            sNormed = "NORM" if normed else "UNNORM"
-            if plot_data:
-              plt.figure( figsize = ( 8, 8 ) )
-              axes = MplPlotter.ratio_plot( 
-                dict(
-                  x = _rawdata[ var ], bins = n_bins, label = "Raw Data",
-                  range = ( self.variables[ var ][ "LIMIT" ][0], self.variables[ var ][ "LIMIT" ][1] ),
-                  errorbars = errorbars, normed = normed, histtype = "marker"
-                ),
-                dict(
-                  x = _fakedata[ :, vars.index( var ) ], bins = n_bins, label = "Fake Data",
-                  range = ( self.variables[ var ][ "LIMIT" ][0], self.variables[ var ][ "LIMIT" ][1] ),
-                  errorbars = errorbars, normed = normed
-                ),
-                ratio_range = ( ratio[0], ratio[1] )
-              )
-
-              ks_text = ""
-              if plot_ks:
-                D, p = stats.ks_2samp( _rawdata[ var ], _fakedata[ :, vars.index( var ) ] )
-                ks_text = "$p_{}={:.2e}$".format( "{KS}", p )
-
-              axes[0][0].set_yscale( yscale )
-              if normed: axes[0][0].set_ylabel( "Normalized Count", ha = "right", y = 1.0 )
-              else: axes[0][0].set_ylabel( "Count", ha = "right", y = 1.0 )
-              plt.xlabel( "${}$".format( self.variables[ var ][ "LATEX" ] ), ha = "right", x = 1.0 )
-
-              if self.region[i] == "D":
-                axes[0][0].set_title( "Data Signal Region {}: {} ({})".format( self.region[i], _plottext, ks_text ), ha = "right", x = 1.0 )
-              else:
-                axes[0][0].set_title( "Data Control Region {}: {} ({})".format( self.region[i], _plottext, ks_text ), ha = "right", x = 1.0 )
-              if save: plt.savefig( os.path.join( self.savedir, "{}_ratio_DATA_r{}_{}.pdf".format( str(var), self.region[i], sNormed ) ) )
-              axes[0][0].legend( loc = "best" )
-              plt.show()
-              plt.close()
-
-            if plot_mc:
-              plt.figure( figsize = ( 8, 8 ) )
-              axes = MplPlotter.ratio_plot(
-                dict(
-                  x = _rawmc[ var ], bins = n_bins, label = "MC",
-                  range = ( self.variables[ var ][ "LIMIT" ][0], self.variables[ var ][ "LIMIT" ][1] ),
-                  errorbars = errorbars, normed = normed, histtype = "marker"
-                ),
-                dict(
-                  x = _fakedata[ :, vars.index( var ) ], bins = n_bins, label = "Fake Data",
-                  range = ( self.variables[ var ][ "LIMIT" ][0], self.variables[ var ][ "LIMIT" ][1] ),
-                  errorbars = errorbars, normed = normed
-                ),
-                ratio_range = ( ratio[0], ratio[1] )
-              )
-
-              ks_text = ""
-              if plot_ks:
-                D, p = stats.ks_2samp( _rawdata[ var ], _fakedata[ :, vars.index( var ) ] )
-                ks_text = "$p_{}={:.2e}$".format( "{KS}", p )
-
-              axes[0][0].set_yscale( yscale )
-              if normed: axes[0][0].set_ylabel( "Normalized Count", ha = "right", y = 1.0 )
-              else: axes[0][0].set_ylabel( "Count", ha = "right", y = 1.0 )
-              plt.xlabel( "${}$".format( self.variables[ var ][ "LATEX" ] ), ha = "right", x = 1.0 )
-              if self.region[i] == "D":
-                axes[0][0].set_title( "MC Signal Region {}: {} ({})".format( self.region[i], _plottext, ks_text ), ha = "right", x = 1.0 )
-              else:
-                axes[0][0].set_title( "MC Control Region {}: {} ({})".format( self.region[i], _plottext, ks_text ), ha = "right", x = 1.0 )
-              if save: plt.savefig( os.path.join( self.savedir, "{}_ratio_MC_r{}_{}.pdf".format( str(var), self.region[i], sNormed ) ) )
-              axes[0][0].legend( loc = "best" )
-              plt.show()
-
-            i += 1
-    pass
-
-  def plot_hist( self,
-      plot_data = True, plot_mc = False, plot_cr = False, plot_sr = True,
-      errorbars = True, normed = True,
-      yscales = [ "linear" ], n_bins = 20, save = False 
-    ):
-    vars = [ str( var ) for var in self.variables ]
-
-    for yscale in yscales:
-      for var in vars:
-        if self.variables[ var ][ "TRANSFORM" ] == True:
-          i = 0
-          for _fakedata, _rawdata, _rawmc, _mcweight, _plottext in zip( self.fakedata, self.rawdata, self.rawmc, self.mcweight, self.plottext ):
-            if not plot_cr and self.region[i] in [ "A", "B", "C", "X", "Y" ]: continue
-            if not plot_sr and self.region[i] == "D": continue
-            sNormed = "NORM" if normed else "UNNORM"
-            plt.figure( figsize = ( 8, 8 ) )
-            if self.variables[ var ][ "TRANSFORM" ] == True:
-              plt.figure()
-              MplPlotter.hist( 
-                  _rawdata[ var ], bins = n_bins, label = "Raw Data",
-                  range = ( self.variables[ var ][ "LIMIT" ][0], self.variables[ var ][ "LIMIT" ][1] ),
-                  errorbars = errorbars, normed = normed, histtype = "marker", alpha = 0.5
-              )
-              if self.mc_weight is None:
-                if plot_data: MplPlotter.hist(
-                  _fakedata[ :, vars.index( var ) ], bins = n_bins, label = "Predicted",
-                  range = ( self.variables[ var ][ "LIMIT" ][0], self.variables[ var ][ "LIMIT" ][1] ),
-                  errorbars = errorbars, normed = normed, alpha = 0.5
-                )
-                if plot_mc: MplPlotter.hist(
-                  _rawmc[ var ], bins = n_bins, label = "MC",
-                  range = ( self.variables[ var ][ "LIMIT" ][0], self.variables[ var ][ "LIMIT" ][1] ),
-                  errorbars = errorbars, normed = normed, histtype = "step", alpha = 0.5
-                )
-              else:
-                if plot_data: MplPlotter.hist(
-                  _fakedata[ :, vars.index( var ) ], bins = n_bins, label = "Fake Data",
-                  range = ( self.variables[ var ][ "LIMIT" ][0], self.variables[ var ][ "LIMIT" ][1] ),
-                  errorbars = errorbars, normed = normed, alpha = 0.5, weights = _mcweight
-                )
-                if plot_mc: MplPlotter.hist(
-                  _rawmc[ var ], bins = n_bins, label = "MC",
-                  range = ( self.variables[ var ][ "LIMIT" ][0], self.variables[ var ][ "LIMIT" ][1] ),
-                  errorbars = errorbars, normed = normed, histtype = "step", alpha = 0.5, weights = _mcweight
-                )
-              plt.yscale( yscale )
-              if normed: plt.ylabel( "Normalized Count", ha = "right", y = 1.0 )
-              else: plt.ylabel( "Count", ha = "right", y = 1.0 )
-              plt.xlabel( "${}$".format( self.variables[ var ][ "LATEX" ] ), ha = "right", x = 1.0 )
-              plt.legend()
-              if self.region[i] == "D":
-                plt.title( "Signal Region {}: {}".format( self.region[i], _plottext ), ha = "right", x = 1.0 )
-              else:
-                plt.title( "Control Region {}: {}".format( self.region[i], _plottext ), ha = "right", x = 1.0 )
-              if save: plt.savefig( os.path.join( self.savedir, "{}_hist_r{}_e{}_{}_{}.pdf".format( str(var), self.region[i], sNormed, yscale.upper() ) ) )
-              plt.show()
-              plt.close()
-            i += 1
-
-  # plot the correlation between the fake data and raw mc for each variable
-  # the expectation is that there should be 
-  def plot_correlation( self, n_sample = 5000 ):
-    xmin = self.regions[ "X" ][ "MIN" ]
-    xmax = self.regions[ "X" ][ "MAX" ]
-    xlen = xmax - xmin + 1
-    ymin = self.regions[ "Y" ][ "MIN" ]
-    ymax = self.regions[ "Y" ][ "MAX" ]
-    ylen = ymax - ymin + 1
-    vars = [ str( var ) for var in self.variables ]
-    for var in vars:
-      if self.variables[ var ][ "TRANSFORM" ] == True:
-        i = 0
-        fig, ax = plt.subplots( int( xlen ), int( ylen ), figsize = ( 8, 9 ) )
-        for xi, x in enumerate( np.linspace( xmin, xmax, xlen ) ):
-          for yi, y in enumerate( np.linspace( ymin, ymax, ylen ) ):
-            lower = self.variables[ var ][ "LIMIT" ][0]
-            upper = self.variables[ var ][ "LIMIT" ][1]
-            ax[ xi, yi ].plot( 
-                self.rawmc[i].iloc[ :n_sample, vars.index( var ) ], 
-                self.fakedata[i][ :n_sample, vars.index( var ) ], 
-                ",", markersize = 5
-                )
-            ax[ xi, yi ].set_xlim( lower, upper )
-            ax[ xi, yi ].set_ylim( lower, upper )
-            ax[ xi, yi ].set_xlabel( "MC", ha = "right", x = 1.0 )
-            ax[ xi, yi ].set_ylabel( "PREDICT DATA", ha = "right", y = 1.0 )
-            xVar = self.variables[ self.regions[ "X" ][ "VARIABLE" ] ][ "LATEX" ]
-            yVar = self.variables[ self.regions[ "Y" ][ "VARIABLE" ] ][ "LATEX" ]
-            ax[ xi, yi ].set_title( "Region {} $({},{})=({},{})$: ${}$".format(
-              self.region[i], xVar, yVar, int(x), int(y),
-              self.variables[ var ][ "LATEX" ]
-            ),
-            ha = "right", x = 1.0, fontsize = 10 )
-            ax[ xi, yi ].plot( [ lower, upper ], [ lower, upper ], "r--" )
-            ax[ xi, yi ].grid()
-
-            i += 1
-        fig.tight_layout()
-        fig.show()
-    pass 
-  
-  def save_root( self, tree_name = "mytree", file_name = "data.root" ):
-    self.save_data = {}
-    self.branch = {}
-    self.fake_data_all = np.vstack( self.fakedata )
-    vars = [ str( var ) for var in self.variables ]
-    for i, var in enumerate( vars ):
-      self.save_data[ var ] = self.fake_data_all[ :, i ]
-    self.mcweight_all = np.concatenate( self.mcweight )
-    self.save_data[ "weight" ] = self.mcweight_all
-    for key, data in self.save_data.items():
-      self.branch[ key ] = data.dtype
-    tree = uproot.newtree( branches = self.branch )
-    with uproot.recreate( file_name ) as f:
-      f[ tree_name ] = tree
-      f[ tree_name ].extend( self.save_data )
-    pass

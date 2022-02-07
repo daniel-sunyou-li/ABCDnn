@@ -86,8 +86,8 @@ def create_tar():
   os.system( "tar -C {} -zcvf ABCDnn.tgz --exclude=\"{}\" --exclude=\"{}\" --exclude=\"{}\" --exclude=\"{}\" {}".format(
       os.path.join( os.getcwd(), "../../../" ),
       "ABCDnn/Data/*",
-      "ABCDnn/Results/*.gif",
-      "ABCDnn/Results/*.png",
+      "ABCDnn/Results/*",
+      "ABCDnn/*log*/*",
       "*.tgz",
       "CMSSW_10_6_19/"
     )
@@ -106,9 +106,9 @@ def condor_job( fileName, condorDir, sampleDir, logDir, checkpoints, tag ):
     "SAMPLEDIR"     : sampleDir,   
     "TAG"           : tag,
     "CHECKPOINTS"   : checkpoints,
-    "CKP_JSON"      : [ checkpoint + ".json" for checkpoint in checkpoints ], 
-    "CKP_INDEX"     : [ checkpoint + ".index" for checkpoint in checkpoints ], 
-    "CKP_DATA"      : [ checkpoint + ".data-00000-of-00001" for checkpoint in checkpoints ],
+    "CKP_JSON"      : ", ".join( [ "Results/" + checkpoint + ".json" for checkpoint in checkpoints ] ), 
+    "CKP_INDEX"     : ",  ".join( [ "Results/" + checkpoint + ".index" for checkpoint in checkpoints ] ), 
+    "CKP_DATA"      : ",  ".join( [ "Results/" + checkpoint + ".data-00000-of-00001" for checkpoint in checkpoints ] ),
     "LOGDIR"        : logDir,              
     "MEMORY"        : request_memory
   }
@@ -118,7 +118,7 @@ def condor_job( fileName, condorDir, sampleDir, logDir, checkpoints, tag ):
 """universe = vanilla
 Executable = apply_abcdnn.sh
 Should_Transfer_Files = Yes
-Transfer_Input_Files = %(CKP_JSON)s %(CKP_INDEX)s %(CKP_DATA)s
+Transfer_Input_Files = %(CKP_JSON)s, %(CKP_INDEX)s, %(CKP_DATA)s
 WhenToTransferOutput = ON_EXIT
 request_memory = %(MEMORY)s
 Output = %(LOGDIR)s/%(SAMPLENAMEOUT)s_%(TAG)s.out
@@ -143,11 +143,8 @@ def submit_jobs( files, key, checkpoints, condorDir, logDir, sampleDir ):
   return jobCount
 
 def main( files ):
+  create_tar()
   count = submit_jobs( files, "nominal", args.checkpoints, condorDir, args.log, os.path.join( config.sourceDir[ args.location ], config.sampleDir[ args.year ] ) )
 
 voms_init()
 main( step3Samples )
-
-
-
-

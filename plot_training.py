@@ -57,63 +57,81 @@ sTree = sFile[ "Events" ]
 tTree = tFile[ "Events" ]
 
 variables = []
-v_in = []
+variables_transform = []
 categorical = []
 lowerlimit = []
 upperlimit = []
 for variable in sorted( list( config.variables.keys() ) ):
-  if config.variables[ variable ][ "TRANSFORM" ] == True: v_in.append( variable )
+  if config.variables[ variable ][ "TRANSFORM" ]: variables_transform.append( variable )
   variables.append( variable )
   categorical.append( config.variables[ variable ][ "CATEGORICAL" ] )
   upperlimit.append( config.variables[ variable ][ "LIMIT" ][1] )
   lowerlimit.append( config.variables[ variable ][ "LIMIT" ][0] )
 
-_onehotencoder = abcdnn.OneHotEncoder_int( categorical, lowerlimit = lowerlimit, upperlimit = upperlimit )
 print( ">> Found {} variables: ".format( len( variables ) ) )
-for variable in sorted( variables ):
-  print( "  + {}".format( variable ) )
-
-variables_transform = [ variable for variable in config.variables.keys() if config.variables[ variable ][ "TRANSFORM" ] ]
+for i, variable in enumerate( variables ):
+  print( "  + {}: [{},{}], Categorical = {}".format( variable, lowerlimit[i], upperlimit[i], categorical[i] ) )
 
 inputs_src = sTree.pandas.df( variables )
-inputs_src_enc = _onehotencoder.encode( inputs_src.to_numpy( dtype = np.float32 ) )
 
-print( ">> Applying normalization to source inputs and splitting into regions" )
-inputmeans = np.hstack( [ float( mean ) for mean in params[ "INPUTMEANS" ] ] )
-inputsigma = np.hstack( [ float( sigma ) for sigma in params[ "INPUTSIGMAS" ] ] )
-normedinputs_src = ( inputs_src_enc[:,:-1] - inputmeans ) / inputsigma
-
-x_range = np.linspace( config.regions[ "X" ][ "MIN" ], config.regions[ "X" ][ "MAX" ], config.regions[ "X" ][ "MAX" ] - config.regions[ "X" ][ "MIN" ] + 1 )
-y_range = np.linspace( config.regions[ "Y" ][ "MIN" ], config.regions[ "Y" ][ "MAX" ], config.regions[ "Y" ][ "MAX" ] - config.regions[ "Y" ][ "MIN" ] + 1 )
-inputs_src_region = { region: [] for region in [ "X", "Y", "A", "B", "C", "D" ] }
-inputs_mc_region = { region: [] for region in [ "X", "Y", "A", "B", "C", "D" ] }
+x_region = np.linspace( config.regions[ "X" ][ "MIN" ], config.regions[ "X" ][ "MAX" ], config.regions[ "X" ][ "MAX" ] - config.regions[ "X" ][ "MIN" ] + 1 )
+y_region = np.linspace( config.regions[ "Y" ][ "MIN" ], config.regions[ "Y" ][ "MAX" ], config.regions[ "Y" ][ "MAX" ] - config.regions[ "Y" ][ "MIN" ] + 1 )
+inputs_src_region = { region: None for region in [ "X", "Y", "A", "B", "C", "D" ] }
 print( ">> Found {} total source entries".format( inputs_src.shape[0] ) )
-for i in range( inputs_src.shape[0] ):
-  var_x = inputs_src.iloc[i][ config.regions[ "X" ][ "VARIABLE" ] ]
-  var_y = inputs_src.iloc[i][ config.regions[ "Y" ][ "VARIABLE" ] ]
-  if var_x > max(x_range) and not config.regions[ "X" ][ "INCLUSIVE" ]: continue
-  if var_y > max(y_range) and not config.regions[ "Y" ][ "INCLUSIVE" ]: continue 
-  inputs_src_region[ get_region( var_x, var_y ) ].append( normedinputs_src[i] )
-  inputs_mc_region[ get_region( var_x, var_y ) ].append( [ 
-    inputs_src.iloc[i][ variables_transform ][1], 
-    inputs_src.iloc[i][ variables_transform ][0]
-  ] )
-
 inputs_tgt = tTree.pandas.df( variables ) 
-inputs_tgt_region = { region: [] for region in [ "X", "Y", "A", "B", "C", "D" ] }
+inputs_tgt_region = { region: None for region in [ "X", "Y", "A", "B", "C", "D" ] }
 print( ">> Found {} total target entries".format( inputs_tgt.shape[0] ) )
-for i in range( inputs_tgt.shape[0] ):
-  var_x = inputs_tgt.iloc[i][ config.regions[ "X" ][ "VARIABLE" ] ]
-  var_y = inputs_tgt.iloc[i][ config.regions[ "Y" ][ "VARIABLE" ] ]
-  if var_x > max(x_range) and not config.regions[ "X" ][ "INCLUSIVE" ]: continue
-  if var_y > max(y_range) and not config.regions[ "Y" ][ "INCLUSIVE" ]: continue
-  inputs_tgt_region[ get_region( var_x, var_y ) ].append( [
-    inputs_tgt.iloc[i][ variables_transform ][1],
-    inputs_tgt.iloc[i][ variables_transform ][0]
-  ] )
 
+inputs_src_region["X"] = inputs_src.loc[ ( inputs_src[ config.regions["X"]["VARIABLE"] ] == x_region[0] ) & ( inputs_src[ config.regions["Y"]["VARIABLE"] ] == y_region[0] ) ]
+inputs_tgt_region["X"] = inputs_tgt.loc[ ( inputs_tgt[ config.regions["X"]["VARIABLE"] ] == x_region[0] ) & ( inputs_tgt[ config.regions["Y"]["VARIABLE"] ] == y_region[0] ) ]
+inputs_src_region["A"] = inputs_src.loc[ ( inputs_src[ config.regions["X"]["VARIABLE"] ] == x_region[1] ) & ( inputs_src[ config.regions["Y"]["VARIABLE"] ] == y_region[0] ) ]
+inputs_tgt_region["A"] = inputs_tgt.loc[ ( inputs_tgt[ config.regions["X"]["VARIABLE"] ] == x_region[1] ) & ( inputs_tgt[ config.regions["Y"]["VARIABLE"] ] == y_region[0] ) ]
+
+if config.regions["Y"]["INCLUSIVE"]:
+  inputs_src_region["Y"] = inputs_src.loc[ ( inputs_src[ config.regions["X"]["VARIABLE"] ] == x_region[0] ) & ( inputs_src[ config.regions["Y"]["VARIABLE"] ] >= y_region[1] ) ]
+  inputs_tgt_region["Y"] = inputs_tgt.loc[ ( inputs_tgt[ config.regions["X"]["VARIABLE"] ] == x_region[0] ) & ( inputs_tgt[ config.regions["Y"]["VARIABLE"] ] >= y_region[1] ) ]
+  inputs_src_region["C"] = inputs_src.loc[ ( inputs_src[ config.regions["X"]["VARIABLE"] ] == x_region[1] ) & ( inputs_src[ config.regions["Y"]["VARIABLE"] ] >= y_region[1] ) ]
+  inputs_tgt_region["C"] = inputs_tgt.loc[ ( inputs_tgt[ config.regions["X"]["VARIABLE"] ] == x_region[1] ) & ( inputs_tgt[ config.regions["Y"]["VARIABLE"] ] >= y_region[1] ) ]
+else:
+  inputs_src_region["Y"] = inputs_src.loc[ ( inputs_src[ config.regions["X"]["VARIABLE"] ] == x_region[0] ) & ( inputs_src[ config.regions["Y"]["VARIABLE"] ] == y_region[1] ) ]
+  inputs_tgt_region["Y"] = inputs_tgt.loc[ ( inputs_tgt[ config.regions["X"]["VARIABLE"] ] == x_region[0] ) & ( inputs_tgt[ config.regions["Y"]["VARIABLE"] ] == y_region[1] ) ]
+  inputs_src_region["C"] = inputs_src.loc[ ( inputs_src[ config.regions["X"]["VARIABLE"] ] == x_region[1] ) & ( inputs_src[ config.regions["Y"]["VARIABLE"] ] == y_region[1] ) ]
+  inputs_tgt_region["C"] = inputs_tgt.loc[ ( inputs_tgt[ config.regions["X"]["VARIABLE"] ] == x_region[1] ) & ( inputs_tgt[ config.regions["Y"]["VARIABLE"] ] == y_region[1] ) ]
+
+if config.regions["X"]["INCLUSIVE"]:
+  inputs_src_region["B"] = inputs_src.loc[ ( inputs_src[ config.regions["X"]["VARIABLE"] ] >= x_region[2] ) & ( inputs_src[ config.regions["Y"]["VARIABLE"] ] == y_region[0] ) ]
+  inputs_tgt_region["B"] = inputs_tgt.loc[ ( inputs_tgt[ config.regions["X"]["VARIABLE"] ] >= x_region[2] ) & ( inputs_tgt[ config.regions["Y"]["VARIABLE"] ] == y_region[0] ) ]
+else:
+  inputs_src_region["B"] = inputs_src.loc[ ( inputs_src[ config.regions["X"]["VARIABLE"] ] == x_region[2] ) & ( inputs_src[ config.regions["Y"]["VARIABLE"] ] == y_region[0] ) ]
+  inputs_tgt_region["B"] = inputs_tgt.loc[ ( inputs_tgt[ config.regions["X"]["VARIABLE"] ] == x_region[2] ) & ( inputs_tgt[ config.regions["Y"]["VARIABLE"] ] == y_region[0] ) ]
+
+if config.regions["X"]["INCLUSIVE"] and config.regions["Y"]["INCLUSIVE"]:
+  inputs_src_region["D"] = inputs_src.loc[ ( inputs_src[ config.regions["X"]["VARIABLE"] ] >= x_region[2] ) & ( inputs_src[ config.regions["Y"]["VARIABLE"] ] >= y_region[1] ) ]
+  inputs_tgt_region["D"] = inputs_tgt.loc[ ( inputs_tgt[ config.regions["X"]["VARIABLE"] ] >= x_region[2] ) & ( inputs_tgt[ config.regions["Y"]["VARIABLE"] ] >= y_region[1] ) ]
+elif config.regions["X"]["INCLUSIVE"] and not config.regions["Y"]["INCLUSIVE"]:
+  inputs_src_region["D"] = inputs_src.loc[ ( inputs_src[ config.regions["X"]["VARIABLE"] ] >= x_region[2] ) & ( inputs_src[ config.regions["Y"]["VARIABLE"] ] == y_region[1] ) ]
+  inputs_tgt_region["D"] = inputs_tgt.loc[ ( inputs_tgt[ config.regions["X"]["VARIABLE"] ] >= x_region[2] ) & ( inputs_tgt[ config.regions["Y"]["VARIABLE"] ] == y_region[1] ) ]
+elif not config.regions["X"]["INCLUSIVE"] and config.regions["Y"]["INCLUSIVE"]:
+  inputs_src_region["D"] = inputs_src.loc[ ( inputs_src[ config.regions["X"]["VARIABLE"] ] == x_region[2] ) & ( inputs_src[ config.regions["Y"]["VARIABLE"] ] >= y_region[1] ) ]
+  inputs_tgt_region["D"] = inputs_tgt.loc[ ( inputs_tgt[ config.regions["X"]["VARIABLE"] ] == x_region[2] ) & ( inputs_tgt[ config.regions["Y"]["VARIABLE"] ] >= y_region[1] ) ]
+else:
+  inputs_src_region["D"] = inputs_src.loc[ ( inputs_src[ config.regions["X"]["VARIABLE"] ] == x_region[2] ) & ( inputs_src[ config.regions["Y"]["VARIABLE"] ] == y_region[1] ) ]
+  inputs_tgt_region["D"] = inputs_tgt.loc[ ( inputs_tgt[ config.regions["X"]["VARIABLE"] ] == x_region[2] ) & ( inputs_tgt[ config.regions["Y"]["VARIABLE"] ] == y_region[1] ) ]
+
+print( ">> Yields in each region:" )
 for region in inputs_src_region:
-  print( ">> Region {}: MC = {}, DATA = {}".format( region, len( inputs_src_region[ region ] ), len( inputs_tgt_region[ region ] ) ) )
+  print( "  + Region {}: Source = {}, Target = {}".format( region, inputs_src_region[region].shape[0], inputs_tgt_region[region].shape[0] ) )
+
+print( ">> Encoding and normalizing source inputs" )
+inputs_enc_region = {}
+encoder = {}
+inputs_nrm_region = {}
+inputmeans = np.hstack( [ float( mean ) for mean in params[ "INPUTMEANS" ] ] )
+inputsigmas = np.hstack( [ float( sigma ) for sigma in params[ "INPUTSIGMAS" ] ] )
+for region in inputs_src_region:
+  encoder[region] = abcdnn.OneHotEncoder_int( categorical, lowerlimit = lowerlimit, upperlimit = upperlimit )
+  inputs_enc_region[ region ] = encoder[region].encode( inputs_src_region[ region ].to_numpy( dtype = np.float32 ) )
+  inputs_nrm_region[ region ] = ( inputs_enc_region[ region ] - inputmeans ) / inputsigmas
 
 print( ">> Processing checkpoints" )
 predictions = {}
@@ -131,16 +149,16 @@ for i, checkpoint in enumerate( sorted( checkpoints ) ):
     permute = True
   )
   NAF.load_weights( os.path.join( folder, checkpoint ) )
-  print( "  + {}".format( checkpoint ) )
   
   predictions[ int( epoch ) ] = { region: [] for region in [ "X", "Y", "A", "B", "C", "D" ] }
   for region in predictions[ int( epoch ) ]:
-    for prediction in NAF.predict( np.asarray( inputs_src_region[ region ] ) ):
-      predictions[ int( epoch ) ][ region ].append( [
-        prediction[0] * inputsigma[0] + inputmeans[0],
-        prediction[1] * inputsigma[1] + inputmeans[1]
-      ] )
-  
+    NAF_predict = np.asarray( NAF.predict( np.asarray( inputs_nrm_region[ region ] ) ) )
+    predictions[ int( epoch ) ][ region ] = NAF_predict * inputsigmas[0:2] + inputmeans[0:2]
+  print( "  + {}: {} = {:.3f} pm {:.3f}, {} = {:.3f} pm {:.3f}".format( 
+    checkpoint, 
+    variables_transform[0], np.mean( predictions[ int( epoch ) ][ "D" ][:,0] ), np.std( predictions[ int( epoch ) ][ "D" ][:,0] ), 
+    variables_transform[1], np.mean( predictions[ int( epoch ) ][ "D" ][:,1] ), np.std( predictions[ int( epoch ) ][ "D" ][:,1] )
+  ) )
 
 print( ">> Generating images of plots" )
 region_key = {
@@ -243,7 +261,9 @@ def plot_ratio( ax, variable, x, y, mc_pred, mc_true, data, bins):
   }
   mc_pred_scale = mc_pred_hist[ "TRUE" ][0] / mc_pred_hist[ "NORM" ][0]
 
-  mc_true_hist = {                                                                                                                        "TRUE": np.histogram( mc_true, bins = bins, density = False ),                                                                        "NORM": np.histogram( mc_true, bins = bins, density = True )
+  mc_true_hist = {                        
+    "TRUE": np.histogram( mc_true, bins = bins, density = False ),
+    "NORM": np.histogram( mc_true, bins = bins, density = True )
   }
   mc_true_scale = mc_true_hist[ "TRUE" ][0] / mc_true_hist[ "NORM" ][0]
 
@@ -260,7 +280,7 @@ def plot_ratio( ax, variable, x, y, mc_pred, mc_true, data, bins):
       ratio.append(0)
       ratio_std.append(0)
     else:
-      ratio.append( ( mc_pred_hist[ "TRUE" ][0][i] * mc_pred_scale[i] ) / ( data_hist[ "TRUE" ][0][i] * data_scale[i] ) )
+      ratio.append( ( mc_pred_hist[ "TRUE" ][0][i] / mc_pred_scale[i] ) / ( data_hist[ "TRUE" ][0][i] / data_scale[i] ) )
       ratio_std.append( ratio_err(
         mc_pred_hist[ "TRUE" ][0][i],
         np.sqrt( mc_pred_hist[ "TRUE" ][0][i] ),
@@ -293,10 +313,10 @@ def plot_ratio( ax, variable, x, y, mc_pred, mc_true, data, bins):
   ax.tick_params( axis = "both", labelsize = 8 )
   if x != 2: ax.axes.xaxis.set_visible(False)
 
-
+os.system( "mkdir -vp Results/{}".format( args.tag ) )
 for epoch in sorted( predictions.keys() ):
   print( "  + Generating image for epoch {}".format( epoch ) )
-  for i, variable in enumerate( sorted( variables_transform ) ): 
+  for i, variable in enumerate( variables_transform ): 
     bins = np.linspace( config.variables[ variable ][ "LIMIT" ][0], config.variables[ variable ][ "LIMIT" ][1], 31 )
     fig, axs = plt.subplots( 6, 2, figsize = (9,12), gridspec_kw = { "height_ratios": [3,1,3,1,3,1] } )
     for x in range( 6 ):
@@ -308,8 +328,8 @@ for epoch in sorted( predictions.keys() ):
             x = int( x / 2 ), y = y,
             epoch = epoch,
             mc_pred = np.asarray( predictions[ epoch ][ region_key[int(x/2)][y] ] )[:,i],
-            mc_true = np.asarray( inputs_mc_region[ region_key[int(x/2)][y] ] )[:,i],
-            data = np.asarray( inputs_tgt_region[ region_key[int(x/2)][y] ] )[:,i],
+            mc_true = inputs_src_region[ region_key[int(x/2)][y] ][ variables_transform ].to_numpy()[:,i],
+            data = inputs_tgt_region[ region_key[int(x/2)][y] ][ variables_transform ].to_numpy()[:,i],
             bins = bins
           )
         else: 
@@ -318,8 +338,8 @@ for epoch in sorted( predictions.keys() ):
             variable = variable,
             x = int((x-1)/2), y = y, 
             mc_pred = np.asarray( predictions[ epoch ][ region_key[int((x-1)/2)][y] ] )[:,i],
-            mc_true = np.asarray( inputs_mc_region[ region_key[int((x-1)/2)][y] ] )[:,i],
-            data = np.asarray( inputs_tgt_region[ region_key[int((x-1)/2)][y] ] )[:,i],
+            mc_true = inputs_src_region[ region_key[int((x-1)/2)][y] ][ variables_transform ].to_numpy()[:,i],
+            data = inputs_tgt_region[ region_key[int((x-1)/2)][y] ][ variables_transform ].to_numpy()[:,i],
             bins = bins 
           )
           position_old = axs[x,y].get_position()
@@ -330,13 +350,10 @@ for epoch in sorted( predictions.keys() ):
           position_old.set_points( points_old )
           axs[x,y].set_position( position_old )
 
-    plt.savefig( "Results/{}_{}_EPOCH{}.png".format( args.tag, variable, epoch ) )
-    images[ variable ].append( imageio.imread( "Results/{}_{}_EPOCH{}.png".format( args.tag, variable, epoch ) ) )
-    del fig, axs
+    plt.savefig( "Results/{}/{}_{}_EPOCH{}.png".format( args.tag, args.tag, variable, epoch ) )
+    images[ variable ].append( imageio.imread( "Results/{}/{}_{}_EPOCH{}.png".format( args.tag, args.tag, variable, epoch ) ) )
+    plt.close()
 
 print( "[DONE] {} training GIF completed: {}_{}.gif, {}_{}.gif".format( args.tag, args.tag, variables_transform[0], args.tag, variables_transform[1] ) )
 for variable in variables_transform:
   imageio.mimsave( "Results/{}_{}.gif".format( args.tag, variable ), images[ variable ], duration = 1 )
-  for epoch in sorted( predictions.keys() ):
-    if epoch != sorted( predictions.keys() )[-1]:
-      os.system( "rm Results/{}_{}_EPOCH{}.png".format( args.tag, variable, epoch ) )

@@ -76,7 +76,6 @@ abcdnn_.train(
   patience = config.params[ "TRAIN" ][ "PATIENCE" ],
   monitor = config.params[ "TRAIN" ][ "MONITOR" ],
   display_loss = config.params[ "TRAIN" ][ "SHOWLOSS" ],
-  save_hp = config.params[ "TRAIN" ][ "SAVEHP" ],
   early_stopping = config.params[ "TRAIN" ][ "EARLY STOP" ],
   periodic_save = config.params[ "TRAIN" ][ "PERIODIC SAVE" ]
 )
