@@ -64,7 +64,10 @@ for checkpoint in args.checkpoints:
 # populate the step 3
 def fill_tree( sample ):
   if args.storage == "EOS":
-    samples_done = subprocess.check_output( "eos root://cmseos.fnal.gov ls /store/user/{}/{}".format( config.eosUserName, config.sampleDir[ args.year ] ), shell = True ).split( "\n" )[:-1]
+    try: 
+      samples_done = subprocess.check_output( "eos root://cmseos.fnal.gov ls /store/user/{}/{}".format( config.eosUserName, config.sampleDir[ args.year ].replace( "step3", "step3_ABCDnn" ) ), shell = True ).split( "\n" )[:-1]
+    except: 
+      samples_done = []
     if sample in  samples_done:
       print( ">> [WARN] {} already processed".format( sample ) )
       return
@@ -109,7 +112,7 @@ def fill_tree( sample ):
   rFile_in = ROOT.TFile.Open( sample )
   rTree_in = rFile_in.Get( "ljmet" )
 
-  rFile_out = ROOT.TFile( sample.replace( "hadd.root", "ABCDnn_hadd.root" ).split("/")[-1],  "RECREATE" )
+  rFile_out = ROOT.TFile( sample.replace( "hadd", "ABCDnn_hadd" ).split("/")[-1],  "RECREATE" )
   rFile_out.cd()
   rTree_out = rTree_in.CloneTree(0)
 
@@ -145,7 +148,7 @@ def fill_tree( sample ):
   rFile_out.Write()
   rFile_out.Close()
   if args.storage == "EOS":
-    os.system( "xrdcp -vp {} {}".format( sample, os.path.join( config.sourceDir[ "CONDOR" ], config.sampleDir[ args.year ] ) ) )
+    os.system( "xrdcp -vp {} {}".format( sample.split( "/" )[-1].replace( "hadd", "ABCDnn_hadd" ), os.path.join( config.sourceDir[ "CONDOR" ], config.sampleDir[ args.year ].replace( "step3", "step3_ABCDnn" ) ) ) )
     os.system( "rm {}".format( sample.split( "/" )[-1].replace( "hadd", "ABCDnn_hadd" ) ) )
   del rTree_in, rFile_in, rTree_out, rFile_out
 

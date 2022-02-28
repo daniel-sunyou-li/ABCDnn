@@ -30,7 +30,7 @@ variables = {
   "NJets_JetSubCalc": {
     "CATEGORICAL": True,
     "TRANSFORM": False,
-    "LIMIT": [5,7],
+    "LIMIT": [4,6],
     "LATEX": "N_j"
   },
   "NJetsCSV_MultiLepCalc": {
@@ -49,10 +49,10 @@ selection = {
 regions = {
   "X": {
     "VARIABLE": "NJets_JetSubCalc",
-    "INCLUSIVE": True,
-    "MIN": 5,
-    "MAX": 7,
-    "SIGNAL": 7
+    "INCLUSIVE": False,
+    "MIN": 4,
+    "MAX": 6,
+    "SIGNAL": 6
   },
   "Y": {
     "VARIABLE": "NJetsCSV_MultiLepCalc",
@@ -70,17 +70,17 @@ params = {
     "MCWEIGHT": None
   },
   "MODEL": { # parameters for setting up the NAF model
-    "NODES_COND": 64,
+    "NODES_COND": 92,
     "HIDDEN_COND": 4,
-    "NODES_TRANS": 4,
+    "NODES_TRANS": 22,
     "LRATE": 1e-3,
-    "DECAY": 1e-1,
-    "GAP": 100.,
+    "DECAY": 1,
+    "GAP": 500.,
     "DEPTH": 1,
     "REGULARIZER": "L1+L2",
     "ACTIVATION": "softplus",
-    "BETA1": 0.9999,
-    "BETA2": 0.999,
+    "BETA1": 0.99,
+    "BETA2": 0.9999,
     "MINIBATCH": 2**12,
     "RETRAIN": True,
     "SEED": 101, # this can be overridden when running train_abcdnn.py
@@ -88,13 +88,13 @@ params = {
     "VERBOSE": False   
   },
   "TRAIN": {
-    "EPOCHS": 5000,
-    "PATIENCE": 1000,
+    "EPOCHS": 3000,
+    "PATIENCE": 3000,
     "SPLIT": 0.10,
     "MONITOR": 50,
     "PERIODIC SAVE": True,  # saves model at each epoch step according to "MONITOR" 
     "SHOWLOSS": True,
-    "EARLY STOP": False,    # early stop if validation loss begins diverging
+    "EARLY STOP": True,    # early stop if validation loss begins diverging
   },
   "PLOT": {
     "RATIO": [ 0.25, 2.0 ], # y limits for the ratio plot
@@ -243,6 +243,43 @@ samples_input = {
 }
 
 samples_apply = {
+  "2016": [
+"TTTo2L2Nu_TuneCP5_PSweights_13TeV-powheg-pythia8_tt1b_hadd.root",
+"TTTo2L2Nu_TuneCP5_PSweights_13TeV-powheg-pythia8_tt2b_hadd.root",
+"TTTo2L2Nu_TuneCP5_PSweights_13TeV-powheg-pythia8_ttbb_hadd.root",
+"TTTo2L2Nu_TuneCP5_PSweights_13TeV-powheg-pythia8_ttcc_hadd.root",
+"TTTo2L2Nu_TuneCP5_PSweights_13TeV-powheg-pythia8_ttjj_hadd.root",
+"TTToHadronic_TuneCP5_PSweights_13TeV-powheg-pythia8_tt1b_hadd.root",
+"TTToHadronic_TuneCP5_PSweights_13TeV-powheg-pythia8_tt2b_hadd.root",
+"TTToHadronic_TuneCP5_PSweights_13TeV-powheg-pythia8_ttbb_hadd.root",
+"TTToHadronic_TuneCP5_PSweights_13TeV-powheg-pythia8_ttcc_hadd.root",
+"TTToHadronic_TuneCP5_PSweights_13TeV-powheg-pythia8_ttjj_hadd.root",
+"TTToSemiLepton_HT500Njet9_TuneCP5_PSweights_13TeV-powheg-pythia8_tt1b_hadd.root",
+"TTToSemiLepton_HT500Njet9_TuneCP5_PSweights_13TeV-powheg-pythia8_tt2b_hadd.root",
+"TTToSemiLepton_HT500Njet9_TuneCP5_PSweights_13TeV-powheg-pythia8_ttbb_hadd.root",
+"TTToSemiLepton_HT500Njet9_TuneCP5_PSweights_13TeV-powheg-pythia8_ttcc_hadd.root",
+"TTToSemiLepton_HT500Njet9_TuneCP5_PSweights_13TeV-powheg-pythia8_ttjj_hadd.root",
+"TTToSemiLeptonic_TuneCP5_PSweights_13TeV-powheg-pythia8_HT0Njet0_tt1b_hadd.root",
+"TTToSemiLeptonic_TuneCP5_PSweights_13TeV-powheg-pythia8_HT0Njet0_tt2b_hadd.root",
+"TTToSemiLeptonic_TuneCP5_PSweights_13TeV-powheg-pythia8_HT0Njet0_ttbb_hadd.root",
+"TTToSemiLeptonic_TuneCP5_PSweights_13TeV-powheg-pythia8_HT0Njet0_ttcc_hadd.root",
+"TTToSemiLeptonic_TuneCP5_PSweights_13TeV-powheg-pythia8_HT0Njet0_ttjj_1_hadd.root",
+"TTToSemiLeptonic_TuneCP5_PSweights_13TeV-powheg-pythia8_HT0Njet0_ttjj_2_hadd.root",
+"TTToSemiLeptonic_TuneCP5_PSweights_13TeV-powheg-pythia8_HT0Njet0_ttjj_3_hadd.root",
+"TTToSemiLeptonic_TuneCP5_PSweights_13TeV-powheg-pythia8_HT0Njet0_ttjj_4_hadd.root",
+"TTToSemiLeptonic_TuneCP5_PSweights_13TeV-powheg-pythia8_HT0Njet0_ttjj_5_hadd.root",
+"TTToSemiLeptonic_TuneCP5_PSweights_13TeV-powheg-pythia8_HT500Njet9_tt1b_hadd.root",
+"TTToSemiLeptonic_TuneCP5_PSweights_13TeV-powheg-pythia8_HT500Njet9_tt2b_hadd.root",
+"TTToSemiLeptonic_TuneCP5_PSweights_13TeV-powheg-pythia8_HT500Njet9_ttbb_hadd.root",
+"TTToSemiLeptonic_TuneCP5_PSweights_13TeV-powheg-pythia8_HT500Njet9_ttcc_hadd.root",
+"TTToSemiLeptonic_TuneCP5_PSweights_13TeV-powheg-pythia8_HT500Njet9_ttjj_hadd.root",
+"QCD_HT300to500_TuneCUETP8M1_13TeV-madgraphMLM-pythia8_hadd.root",
+"QCD_HT500to700_TuneCUETP8M1_13TeV-madgraphMLM-pythia8_hadd.root",
+"QCD_HT700to1000_TuneCUETP8M1_13TeV-madgraphMLM-pythia8_hadd.root",
+"QCD_HT1000to1500_TuneCUETP8M1_13TeV-madgraphMLM-pythia8_hadd.root",
+"QCD_HT1500to2000_TuneCUETP8M1_13TeV-madgraphMLM-pythia8_hadd.root",
+"QCD_HT2000toInf_TuneCUETP8M1_13TeV-madgraphMLM-pythia8_hadd.root",
+  ],
   "2017": [
 "TTTo2L2Nu_TuneCP5_PSweights_13TeV-powheg-pythia8_tt1b_hadd.root",
 "TTTo2L2Nu_TuneCP5_PSweights_13TeV-powheg-pythia8_tt2b_hadd.root",
@@ -280,5 +317,40 @@ samples_apply = {
 "QCD_HT1000to1500_TuneCP5_13TeV-madgraph-pythia8_hadd.root",
 "QCD_HT1500to2000_TuneCP5_13TeV-madgraph-pythia8_hadd.root",
 "QCD_HT2000toInf_TuneCP5_13TeV-madgraph-pythia8_hadd.root"
+  ],
+  "2018": [
+#"TTTo2L2Nu_TuneCP5_13TeV-powheg-pythia8_tt1b_hadd.root",
+#"TTTo2L2Nu_TuneCP5_13TeV-powheg-pythia8_tt2b_hadd.root",
+#"TTTo2L2Nu_TuneCP5_13TeV-powheg-pythia8_ttbb_hadd.root",
+#"TTTo2L2Nu_TuneCP5_13TeV-powheg-pythia8_ttcc_hadd.root",
+#"TTTo2L2Nu_TuneCP5_13TeV-powheg-pythia8_ttjj_hadd.root",
+#"TTToHadronic_TuneCP5_13TeV-powheg-pythia8_tt1b_hadd.root",
+#"TTToHadronic_TuneCP5_13TeV-powheg-pythia8_tt2b_hadd.root",
+#"TTToHadronic_TuneCP5_13TeV-powheg-pythia8_ttbb_hadd.root",
+#"TTToHadronic_TuneCP5_13TeV-powheg-pythia8_ttcc_hadd.root",
+#"TTToHadronic_TuneCP5_13TeV-powheg-pythia8_ttjj_hadd.root",
+#"TTToSemiLepton_HT500Njet9_TuneCP5_13TeV-powheg-pythia8_tt1b_hadd.root",
+#"TTToSemiLepton_HT500Njet9_TuneCP5_13TeV-powheg-pythia8_tt2b_hadd.root",
+#"TTToSemiLepton_HT500Njet9_TuneCP5_13TeV-powheg-pythia8_ttbb_hadd.root",
+#"TTToSemiLepton_HT500Njet9_TuneCP5_13TeV-powheg-pythia8_ttcc_hadd.root",
+#"TTToSemiLepton_HT500Njet9_TuneCP5_13TeV-powheg-pythia8_ttjj_hadd.root",
+#"TTToSemiLeptonic_TuneCP5_13TeV-powheg-pythia8_HT0Njet0_tt1b_hadd.root",
+#"TTToSemiLeptonic_TuneCP5_13TeV-powheg-pythia8_HT0Njet0_tt2b_hadd.root",
+#"TTToSemiLeptonic_TuneCP5_13TeV-powheg-pythia8_HT0Njet0_ttbb_hadd.root",
+#"TTToSemiLeptonic_TuneCP5_13TeV-powheg-pythia8_HT0Njet0_ttcc_hadd.root",
+#"TTToSemiLeptonic_TuneCP5_13TeV-powheg-pythia8_HT0Njet0_ttjj_1_hadd.root",
+#"TTToSemiLeptonic_TuneCP5_13TeV-powheg-pythia8_HT0Njet0_ttjj_2_hadd.root",
+#"TTToSemiLeptonic_TuneCP5_13TeV-powheg-pythia8_HT500Njet9_tt1b_hadd.root",
+#"TTToSemiLeptonic_TuneCP5_13TeV-powheg-pythia8_HT500Njet9_tt2b_hadd.root",
+#"TTToSemiLeptonic_TuneCP5_13TeV-powheg-pythia8_HT500Njet9_ttbb_hadd.root",
+#"TTToSemiLeptonic_TuneCP5_13TeV-powheg-pythia8_HT500Njet9_ttcc_hadd.root",
+#"TTToSemiLeptonic_TuneCP5_13TeV-powheg-pythia8_HT500Njet9_ttjj_hadd.root",
+#"QCD_HT200to300_TuneCP5_13TeV-madgraphMLM-pythia8_hadd.root",
+"QCD_HT300to500_TuneCP5_13TeV-madgraphMLM-pythia8_hadd.root",
+"QCD_HT500to700_TuneCP5_13TeV-madgraphMLM-pythia8_hadd.root",
+"QCD_HT700to1000_TuneCP5_13TeV-madgraphMLM-pythia8_hadd.root",
+"QCD_HT1000to1500_TuneCP5_13TeV-madgraphMLM-pythia8_hadd.root",
+"QCD_HT1500to2000_TuneCP5_13TeV-madgraphMLM-pythia8_hadd.root",
+"QCD_HT2000toInf_TuneCP5_13TeV-madgraphMLM-pythia8_hadd.root"
   ]
 }

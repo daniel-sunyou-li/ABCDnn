@@ -135,6 +135,27 @@ for region in inputs_src_region:
 
 print( ">> Processing checkpoints" )
 predictions = {}
+predictions_best = { region: [] for region in [ "X", "Y", "A", "B", "C", "D" ] }
+NAF = abcdnn.NAF( 
+  inputdim = params["INPUTDIM"],
+  conddim = params["CONDDIM"],
+  activation = params["ACTIVATION"], 
+  regularizer = params["REGULARIZER"],
+  nodes_cond = params["NODES_COND"],
+  hidden_cond = params["HIDDEN_COND"],
+  nodes_trans = params["NODES_TRANS"],
+  depth = params["DEPTH"],
+  permute = True
+)
+NAF.load_weights( os.path.join( folder, args.tag ) )
+
+for region in predictions_best:
+  NAF_predict = np.asarray( NAF.predict( np.asarray( inputs_nrm_region[ region ] ) ) )
+  predictions_best[ region ] = NAF_predict * inputsigmas[0:2] + inputmeans[0:2] 
+  
+del NAF
+
+
 for i, checkpoint in enumerate( sorted( checkpoints ) ):
   epoch = checkpoint.split( "EPOCH" )[1]
   NAF = abcdnn.NAF( 
@@ -159,6 +180,7 @@ for i, checkpoint in enumerate( sorted( checkpoints ) ):
     variables_transform[0], np.mean( predictions[ int( epoch ) ][ "D" ][:,0] ), np.std( predictions[ int( epoch ) ][ "D" ][:,0] ), 
     variables_transform[1], np.mean( predictions[ int( epoch ) ][ "D" ][:,1] ), np.std( predictions[ int( epoch ) ][ "D" ][:,1] )
   ) )
+  del NAF
 
 print( ">> Generating images of plots" )
 region_key = {
@@ -314,6 +336,44 @@ def plot_ratio( ax, variable, x, y, mc_pred, mc_true, data, bins):
   if x != 2: ax.axes.xaxis.set_visible(False)
 
 os.system( "mkdir -vp Results/{}".format( args.tag ) )
+print( "Plotting best trained model" )
+for i, variable in enumerate( variables_transform ):
+  bins = np.linspace( config.variables[ variable ][ "LIMIT" ][0], config.variables[ variable ][ "LIMIT" ][1], 31 )
+  fig, axs = plt.subplots( 6, 2, figsize = (9,12), gridspec_kw = { "height_ratios": [3,1,3,1,3,1] } )
+  for x in range(6):
+    for y in range(2):
+      if x % 2 == 0:
+        plot_hist(
+          ax = axs[x,y],
+          variable = variable,
+          x = int( x / 2 ), y = y,
+          epoch = "BEST",
+          mc_pred = np.asarray( predictions_best[ region_key[ int(x/2) ][y] ] )[:,i],
+          mc_true = inputs_src_region[ region_key[int(x/2)][y] ][ variables_transform ].to_numpy()[:,i],
+          data = inputs_tgt_region[ region_key[int(x/2)][y] ][ variables_transform ].to_numpy()[:,i],
+          bins = bins
+        )
+      else:
+        plot_ratio(
+          ax = axs[x,y],
+          variable = variable,
+          x = int((x-1)/2), y = y,
+          mc_pred = np.asarray( predictions_best[ region_key[ int((x-1)/2) ][y] ] )[:,i],
+          mc_true = inputs_src_region[ region_key[int((x-1)/2)][y] ][ variables_transform ].to_numpy()[:,i],
+          data = inputs_tgt_region[ region_key[int((x-1)/2)][y] ][ variables_transform ].to_numpy()[:,i],
+          bins = bins
+        )
+      position_old = axs[x,y].get_position()
+      position_new = axs[x-1,y].get_position()
+      points_old = position_old.get_points()
+      points_new = position_new.get_points()
+      points_old[1][1] = points_new[0][1]
+      position_old.set_points( points_old )
+      axs[x,y].set_position( position_old )
+  plt.savefig( "Results/{}/{}_{}.png".format( args.tag, args.tag, variable ) )  
+  plt.close()
+
+print( "Plotting models per epoch:" )
 for epoch in sorted( predictions.keys() ):
   print( "  + Generating image for epoch {}".format( epoch ) )
   for i, variable in enumerate( variables_transform ): 
