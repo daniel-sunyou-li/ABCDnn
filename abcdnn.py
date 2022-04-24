@@ -229,7 +229,7 @@ def unweight(pddata):
     idx += nmatches
   return pddata
   
-def prepdata( rSource, rTarget, selection, variables, mc_weight = None ):
+def prepdata( rSource, rTarget, variables, mc_weight = None ):
 # mc_weight(str) = option for weighting MC by the xsec
 # rSource (str) = source ROOT file
 # rTarget (str) = target ROOT file
@@ -249,30 +249,18 @@ def prepdata( rSource, rTarget, selection, variables, mc_weight = None ):
   dataf = uproot.open( rTarget )
   tree_mc = mcf[ 'Events' ]
   tree_data = dataf[ 'Events' ]
-  mc_df = {}
-  data_df = {}
-  for var in selection:
-    mc_df[ var ] = tree_mc.pandas.df( var ) 
-    data_df[ var ] = tree_data.pandas.df( var )
-  zero_key = list( selection.keys() )[0]
-  mc_select = ( mc_df[ zero_key ][ zero_key ] >= selection[ zero_key ] )
-  data_select = ( data_df[ zero_key ][ zero_key ] >= selection[ zero_key ] )
   
   mc_dfs = tree_mc.pandas.df( vars )
   data_dfs = tree_data.pandas.df( vars )
-  for var in selection:
-    if var != zero_key:
-      mc_select &= ( mc_df[ var ][ var ] >= selection[ var ] )
-      data_select &= ( data_df[ var ][ var ] >= selection[ var ] )
 
   # do not consider cross section weight. The weight of the resut file is filled with 1.
   if mc_weight == None:
-    inputrawmc = mc_dfs[ mc_select ]
+    inputrawmc = mc_dfs
     inputrawmcweight = None
 
   # The weight of the resut file is filled with 'xsecWeight'
   if mc_weight == "weight":
-    inputrawmc = mc_dfs[ mc_select ]
+    inputrawmc = mc_dfs
     inputrawmcweight = tree_mc.pandas.df( [ 'xsecWeight' ] )[ mc_select ].to_numpy( dtype=np.float32 )
   
   # duplicate source samples according to the cross section. The weight of the resut file is filled with 1.
@@ -283,7 +271,7 @@ def prepdata( rSource, rTarget, selection, variables, mc_weight = None ):
   
   inputsmc_enc = _onehotencoder.encode( inputrawmc.to_numpy( dtype=np.float32 ) )
 
-  inputrawdata = data_dfs[ data_select ]
+  inputrawdata = data_dfs
   inputrawdata_np = inputrawdata.to_numpy( dtype=np.float32 )  
   inputrawdata_enc = _onehotencoder.encode( inputrawdata_np )
 
@@ -657,14 +645,13 @@ class ABCDnn_training(object):
     # obtain the normalized data (plus others)
     self.rSource = rSource        # (str) path to source ROOT file
     self.rTarget = rTarget        # (str) path to target ROOT file
-    self.selection = selection    # (dict) event selection cuts
     self.variables = variables    # (dict) variable limits and type
     self.regions = regions        # (dict) control and signal regions
     self.mc_weight = mc_weight    # (str) use xsec weights
 
     rawinputs, rawinputsmc, rawmcweight, normedinputs, normedinputsmc, inputmeans, \
       inputsigma, ncat_per_feature = prepdata( rSource, rTarget, 
-      selection, variables, mc_weight )
+      variables, mc_weight )
 
     self.rawinputs = rawinputs                # unnormalized data tree after event selection
     self.rawinputsmc = rawinputsmc            # unnormalized mc tree after event selection

@@ -69,25 +69,16 @@ class ToyTree:
     self.rFile = ROOT.TFile( "{}.root".format( name ), "RECREATE" )
     self.rTree = ROOT.TTree( "Events", name )
     self.variables = { # variables that are used regardless of the transformation variables
-      "NJets_JetSubCalc": { "ARRAY": array( "i", [0] ), "STRING": "NJets_JetSubCalc/I" },
-      "NJetsCSV_MultiLepCalc": { "ARRAY": array( "i", [0] ), "STRING": "NJetsCSV_MultiLepCalc/I" },
       "xsecWeight": { "ARRAY": array( "f", [0] ), "STRING": "xsecWeight/F" }
     }
+    for variable in config.variables.keys():
+      if not config.variables[ variable ][ "TRANSFORM" ]:
+        self.variables[ variable ] = { "ARRAY": array( "i", [0] ), "STRING": str(variable) + "/I" }
     
     for variable in trans_var:
       self.variables[ variable ] = { "ARRAY": array( "f", [0] ), "STRING": "{}/F".format( variable ) }
-    
-    self.selection = { # edit these accordingly
-      "NJets_JetSubCalc": { "VALUE": [ 4 ], "CONDITION": [ ">=" ] },
-      "NJetsCSV_MultiLepCalc": { "VALUE": [ 2 ], "CONDITION": [ ">=" ] },
-      "corr_met_MultiLepCalc": { "VALUE": [ 60. ], "CONDITION": [ ">" ] },
-      "MT_lepMet": { "VALUE": [ 60 ], "CONDITION": [ ">" ] },
-      "minDR_lepJet": { "VALUE": [ 0.4 ], "CONDITION": [ ">" ] },
-      "AK4HT": { "VALUE": [ 500. ], "CONDITION": [ ">" ] },
-      "DataPastTriggerX": { "VALUE": [ 1 ], "CONDITION": [ "==" ] },
-      "MCPastTriggerX": { "VALUE": [ 1 ], "CONDITION": [ "==" ] },
-      #"isTraining": { "VALUE": [ "1" ], "CONDITION": [ "==" ] },
-    }
+   
+    self.selection = config.selection 
     
     for variable in self.variables:
       self.rTree.Branch( str( variable ), self.variables[ variable ][ "ARRAY" ], self.variables[ variable ][ "STRING" ] )

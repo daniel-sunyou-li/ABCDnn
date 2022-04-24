@@ -64,16 +64,11 @@ for checkpoint in args.checkpoints:
 # populate the step 3
 def fill_tree( sample ):
   if args.storage == "EOS":
-<<<<<<< HEAD
     try: 
       samples_done = subprocess.check_output( "eos root://cmseos.fnal.gov ls /store/user/{}/{}".format( config.eosUserName, config.sampleDir[ args.year ].replace( "step3", "step3_ABCDnn" ) ), shell = True ).split( "\n" )[:-1]
     except: 
       samples_done = []
     if sample in  samples_done:
-=======
-    samples_done = subprocess.check_output( "eos root://cmseos.fnal.gov ls /store/user/{}/{}".format( config.eosUserName, config.sampleDir[ args.year ] ), shell = True ).split( "\n" )[:-1]
-    if sample in samples_done:
->>>>>>> 5791af324f5017431e3af5d4594a298f1967c6a0
       print( ">> [WARN] {} already processed".format( sample ) )
       return
   print( ">> Formatting sample: {}".format( sample ) )
@@ -118,11 +113,7 @@ def fill_tree( sample ):
   rFile_in = ROOT.TFile.Open( sample )
   rTree_in = rFile_in.Get( "ljmet" )
 
-<<<<<<< HEAD
   rFile_out = ROOT.TFile( sample.replace( "hadd", "ABCDnn_hadd" ).split("/")[-1],  "RECREATE" )
-=======
-  rFile_out = ROOT.TFile( sample_ABCDnn,  "RECREATE" )
->>>>>>> 5791af324f5017431e3af5d4594a298f1967c6a0
   rFile_out.cd()
   rTree_out = rTree_in.CloneTree(0)
 
@@ -158,13 +149,8 @@ def fill_tree( sample ):
   rFile_out.Write()
   rFile_out.Close()
   if args.storage == "EOS":
-<<<<<<< HEAD
     os.system( "xrdcp -vp {} {}".format( sample.split( "/" )[-1].replace( "hadd", "ABCDnn_hadd" ), os.path.join( config.sourceDir[ "CONDOR" ], config.sampleDir[ args.year ].replace( "step3", "step3_ABCDnn" ) ) ) )
     os.system( "rm {}".format( sample.split( "/" )[-1].replace( "hadd", "ABCDnn_hadd" ) ) )
-=======
-    os.system( "xrdcp -vp {} {}".format( sample_ABCDnn, os.path.join( config.sourceDir[ "CONDOR" ], config.sampleDir[ args.year ].replace( "step3", "ABCDnn_step3" ) ) )
-    os.system( "rm {}".format( sample_ABCDnn ) )
->>>>>>> 5791af324f5017431e3af5d4594a298f1967c6a0
   del rTree_in, rFile_in, rTree_out, rFile_out
 
 if args.test:
