@@ -9,13 +9,12 @@ from tensorflow.keras.optimizers.schedules import LearningRateSchedule
 import numpy as np
 import os, uproot, pickle
 from scipy import stats
-from sklearn.model_selection import train_test_split
 from json import dumps as write_json
 
 def invsigmoid( x ):
 # inverse sigmoid function for transformer
-  xclip = tf.clip_by_value( x, 1e-6, 1.0 - 1e-6 )
-  return tf.math.log( xclip / ( 1.0 - xclip ) )
+  #xclip = tf.clip_by_value( x, 1e-6, 1.0 - 1e-6 )
+  return tf.math.log( x / ( 1.0 - x ) )
 
 def NAF( inputdim, conddim, activation, regularizer, nodes_cond, hidden_cond, nodes_trans, depth, permute ):
 # neural autoregressive flow is a chain of MLP networks used for the conditioner and transformer parts of the flow
@@ -24,12 +23,6 @@ def NAF( inputdim, conddim, activation, regularizer, nodes_cond, hidden_cond, no
     "softplus": tf.nn.softplus,
     "relu": tf.nn.relu,
     "elu": tf.nn.elu
-  }
-  regularizer_key = { 
-    "L1": tf.keras.regularizers.l1,
-    "L2": tf.keras.regularizers.l2,
-    "L1+L2": tf.keras.regularizers.L1L2,
-    "None": None
   }
   
   xin = layers.Input( shape = ( inputdim + conddim, ), name = "INPUT_LAYER" )
@@ -43,7 +36,7 @@ def NAF( inputdim, conddim, activation, regularizer, nodes_cond, hidden_cond, no
       permutation = tf.constant( randperm )
     else:
       permutation = tf.range( inputdim, dtype = "int32" )
-    permuter = tfp.bijectors.Permute( permutation = permutation )
+    permuter = tfp.bijectors.Permute( permutation = permutation, name = "PERMUTER_{}".format( idepth ) )
     xfeatures_permuted = permuter.forward( nextfeature )
     outlist = []
     for i in range( inputdim ):
@@ -53,20 +46,24 @@ def NAF( inputdim, conddim, activation, regularizer, nodes_cond, hidden_cond, no
       net1 = x
       condnet = xcondin
       for iv in range( hidden_cond ):
-        condnet = layers.Dropout( 0.2 )( condnet )
-        condnet = layers.Dense( nodes_cond, activation = activation_key[ activation ], kernel_regularizer = regularizer_key[ regularizer ], name = "COND_DENSE_{}_{}_{}".format( idepth, i, iv ) )( condnet )
-      w1 = layers.Dense( nodes_trans, activation = tf.nn.softplus, name = "SIGMOID_WEIGHT_{}_{}".format( idepth, i ) )(condnet ) # has to be softplus for output to be >0
+        condnet = layers.Dense( nodes_cond, activation = activation_key[ activation ], name = "COND_DENSE_{}_{}_{}".format( idepth, i, iv ) )( condnet )
+        if regularizer.upper() in [ "DROPOUT" ]:
+          condnet = layers.Dropout( 0.3 )( condnet )
+      w1 = layers.Dense( nodes_trans, activation = tf.nn.softplus, name = "SIGMOID_WEIGHT_{}_{}".format( idepth, i ) )( condnet ) # has to be softplus for output to be >0
       b1 = layers.Dense( nodes_trans, activation = None, name = "SIGMOID_BIAS_{}_{}".format( idepth, i ) )( condnet )
       del condnet
+
       # transforming layer
       net2 = tf.nn.sigmoid( w1 * net1 + b1,  name = "TRANS_DENSE_{}_{}".format( idepth, i ) ) 
        
       # reverse conditioner network
       condnet = xcondin
       for iv in range( hidden_cond ):
-        condnet = layers.Dense( nodes_cond, activation = activation_key[ activation ], kernel_regularizer = regularizer_key[ regularizer ], name = "INV_COND_DENSE_{}_{}_{}".format( idepth, i, iv ) )( condnet )
+        if regularizer.upper() in [ "DROPOUT" ]:
+          condnet = layers.Dropout( 0.3 )( condnet )
+        condnet = layers.Dense( nodes_cond, activation = activation_key[ activation ], name = "INV_COND_DENSE_{}_{}_{}".format( idepth, i, iv ) )( condnet )
       w2 = layers.Dense( nodes_trans, activation = tf.nn.softplus, name = "INV_SIGMOID_WEIGHT_{}_{}".format( idepth, i ) )( condnet )
-      w2 = w2 / ( 1.0e-6 + tf.reduce_sum( w2, axis = 1, keepdims = True ) ) # normalize the transformer output
+      w2 = w2 / ( 1.0e-3 + tf.reduce_sum( w2, axis = 1, keepdims = True ) ) # normalize the transformer output
       
       # inverse transformer network
       net3 = invsigmoid( tf.reduce_sum( net2 * w2, axis = 1, keepdims = True ) )
@@ -131,7 +128,7 @@ class OneHotEncoder_int( object ):
 
   def applylimit( self, categoricalinputdata ):
     if self.lowerlimit is None:
-      self.lowerlimit = np.min( categoricalinputdata, axis=0 )
+      self.lowerlimit = np.min( categoricalinputdata, axis = 0 )
     
     if self.upperlimit is None:
       self.upperlimit = np.max( categoricalinputdata, axis = 0 )
@@ -195,7 +192,7 @@ class SawtoothSchedule( LearningRateSchedule ):
 
   def __call__( self, step ):
     phase = step % self.cycle_steps
-    lr = self.start_learning_rate + ( self.end_learning_rate - self.start_learning_rate ) * ( phase / self.cycle_steps )
+    lr = tf.gather( np.geomspace( self.start_learning_rate, self.end_learning_rate, self.cycle_steps ), tf.cast( phase, tf.int32 ) ) 
     if ( self.random_fluctuation > 0 ):
       lr *= np.random.normal( 1.0, self.random_fluctuation )
     return lr
@@ -258,7 +255,7 @@ def prepdata( rSource, rTarget, variables, mc_weight = None ):
     inputrawmc = mc_dfs
     inputrawmcweight = None
 
-  # The weight of the resut file is filled with 'xsecWeight'
+  # The weight of the result file is filled with 'xsecWeight'
   if mc_weight == "weight":
     inputrawmc = mc_dfs
     inputrawmcweight = tree_mc.pandas.df( [ 'xsecWeight' ] )[ mc_select ].to_numpy( dtype=np.float32 )
@@ -312,7 +309,7 @@ def prepdata( rSource, rTarget, variables, mc_weight = None ):
 class ABCDnn(object):
   def __init__( self, inputdim_categorical_list, inputdim, nodes_cond, hidden_cond,
                nodes_trans, minibatch, activation, regularizer,
-               depth, lr, gap, conddim, beta1, beta2, decay,
+               depth, lr, gap, conddim, beta1, beta2, mmd_sigmas, mmd_weights, decay,
                retrain, savedir, savefile, disc_tag, 
                seed, permute, verbose, model_tag ):
     self.inputdim_categorical_list = inputdim_categorical_list
@@ -332,6 +329,8 @@ class ABCDnn(object):
     self.conddim = conddim
     self.beta1 = beta1
     self.beta2 = beta2
+    self.mmd_sigmas = mmd_sigmas
+    self.mmd_weights = mmd_weights
     self.retrain = retrain
     self.savedir = savedir
     self.savefile = savefile
@@ -452,11 +451,11 @@ class ABCDnn(object):
       f.write( write_json( params, indent = 2 ) )
     #pickle.dump( params, open( os.path.join( self.savedir, "hyperparams.pkl" ), "wb" ) )
 
-  def monitor( self, step, glossv_trn, glossv_val, mmdloss_trn, mmdloss_val  ):
+  def monitor( self, step, glossv_trn, mmdloss_trn ):
     self.monitor_record.append( [ 
       step, 
-      glossv_trn, glossv_val, 
-      mmdloss_trn, mmdloss_val 
+      glossv_trn,  
+      mmdloss_trn
       ]
     )
 
@@ -492,11 +491,11 @@ class ABCDnn(object):
     weight_b = self.mceventweight[mcnextbatchidx]
     return target_b, source_b, weight_b
   
-  def get_next_batch( self, split, size=None ):
+  def get_next_batch( self, size=None ):
     """Return minibatch from random ordered numpy data
     """
     if size is None:
-      size = int( self.minibatch * ( ( 1. - split ) ** -1 ) )
+      size = int( self.minibatch )
 
     # reset counter if no more entries left for current batch
     if self.datacounter + size >= self.ntotalevents:
@@ -504,7 +503,13 @@ class ABCDnn(object):
       self.randorder = np.random.permutation( self.numpydata.shape[0] )
 
     batchbegin = self.datacounter
-    nextconditional = self.numpydata[ self.randorder[batchbegin], self.inputdim: ]
+    rChoice = np.random.choice( [ "X", "Y", "A", "C", "B" ], 1 )
+    if rChoice == "X": nextconditional = np.array( [ 1, 0, 1, 0, 0 ] )
+    if rChoice == "Y": nextconditional = np.array( [ 0, 1, 1, 0, 0 ] )
+    if rChoice == "A": nextconditional = np.array( [ 1, 0, 0, 1, 0 ] )
+    if rChoice == "C": nextconditional = np.array( [ 0, 1, 0, 1, 0 ] )
+    if rChoice == "B": nextconditional = np.array( [ 1, 0, 0, 0, 1 ] )
+    #nextconditional = self.numpydata[ self.randorder[batchbegin], self.inputdim: ]
     target_b, source_b, weight_b = self.find_condmatch( size, nextconditional )
 
     while len( target_b ) != len( source_b ):
@@ -523,88 +528,86 @@ class ABCDnn(object):
     return source_b, target_b, weight_b
 
   # eqvuialent to train_step = tf.function( train_step )
-  @tf.function(autograph=False)
-  def train_step(self, source, target, split, sourceweight=1. ):
-    source_trn, source_val, target_trn, target_val = train_test_split(
-      self.this_source, self.this_target, test_size = split
-    )
-    
+  @tf.function
+  def train_step( self, source, target, sourceweight=1. ):
     with tf.GradientTape() as gtape:
       # get the predicted values from the current trained model
-      generated_trn = tf.concat( [
-          self.model( source_trn, training = True ),
-          target_trn[:, -self.conddim:]
+      generated = tf.concat( 
+	[
+          self.model( source ),
+          target[:, -self.conddim:]
         ],
         axis = -1
       )
+      mmdloss = mix_rbf_mmd2( target[:, :self.inputdim], generated[:, :self.inputdim], self.mmd_sigmas, self.mmd_weights )
 
-      #mmdloss = mix_rbf_mmd2(targetbatch[:, :self.inputdim], generated[:, :self.inputdim], sigmas=(0.1, 0.2,)) # for 1-D or 2-D
-      mmdloss_trn = mix_rbf_mmd2( target_trn[:, :self.inputdim], generated_trn[:, :self.inputdim], sigmas=(0.2, 0.5, 1.0, 2.0, 4.0) ) # not clear how these sigma values were chosen
-    
-    gradient = gtape.gradient( mmdloss_trn, self.model.trainable_variables )
+    gradient = gtape.gradient( mmdloss, self.model.trainable_variables )
     self.optimizer.apply_gradients( zip( 
         gradient, 
         self.model.trainable_variables 
       ) 
     )
 
-    generated_val = tf.concat( [
-        self.model( source_val, training = False ),
-        target_val[ :, -self.conddim:]
-      ],
-      axis = -1
-    )
+    glossv = tf.reduce_mean( mmdloss )
 
-    mmdloss_val = mix_rbf_mmd2( target_val[:, :self.inputdim], generated_val[:, :self.inputdim], sigmas=(0.2, 0.5, 1.0, 2.0, 4.0) )
+    return glossv, mmdloss
 
-    glossv_trn = tf.reduce_mean( mmdloss_trn )
-    glossv_val = tf.reduce_mean( mmdloss_val )
-
-    return glossv_trn, glossv_val, mmdloss_trn, mmdloss_val
-
-  def train( self, steps = 10000, monitor = 1000, patience = 100, early_stopping = True, split = 0.25, hpo = False, periodic_save = False ):
+  def train( self, steps = 10000, monitor = 1000, patience = 100, early_stopping = True, loss_threshold = 1.0e-2, hpo = False, periodic_save = False ):
     # need to update this to use a validation set
-    print( "{:<5} / {:<14} / {:<14} / {:<14}".format( "Epoch", "MMD (Train)", "MMD (Val)", "Min MMD (Val)" ) ) 
+    print( "{:<5} / {:<8} / {:<8} / {:<6} / {:<10} / {:<10} / {:<10}".format( "Epoch", "MMD", "Min MMD", "Region", "DNN %", "HT %", "L Rate" ) ) 
     impatience = 0      # don't edit
     stop_train = False  # don't edit
     self.minepoch = 0
     save_counter = 0    # edit so you aren't saving every time the model improves --> takes too much time
     for i in range( steps ):
-      source, target, batchweight = self.get_next_batch( split = split )
+      source, target, batchweight = self.get_next_batch()
       # train the model on this batch
-      glossv_trn, glossv_val, mmdloss_trn, mmdloss_val  = self.train_step( source, target, split, batchweight )
+      glossv, mmdloss  = self.train_step( source, target, batchweight )
       # currently not using glossv because mmdloss is a scalar and glossv is the mean of mmdloss
       # generator update
-      if i == 0: self.minloss = mmdloss_val
+      if i == 0: self.minloss = mmdloss
       # early stopping on validation implementation
       else: 
-        if mmdloss_val.numpy() < self.minloss.numpy():
+        if mmdloss.numpy() < self.minloss.numpy():
           self.minepoch = i
           impatience = 0 # reset the impatience counter
           if not hpo: # don't save models during hyper parameter optimization training to save time
-            if save_counter > monitor or mmdloss_val.numpy() < 0.5 * self.minloss.numpy(): # reduce number of saved models
+            if save_counter > monitor or mmdloss.numpy() < 0.5 * self.minloss.numpy(): # reduce number of saved models
               save_counter = 0
               self.checkpointmgr.save()
               self.model.save_weights( "./Results/{}".format( self.model_tag ) )
-          self.minloss = mmdloss_val
+          self.minloss = mmdloss
         elif impatience > patience and early_stopping:
           print( "[WARN] Early stopping after {} epochs without improvement in loss (min loss = {:.3e})".format( i, self.minloss ) )
           stop_train = True
         else:
           impatience += 1
       if i % monitor == 0:
-        print( "{:<5}   {:<14.3e}   {:<14.3e}   {:<14.3e}".format( 
+        cArr = target[:,-self.conddim:][0]
+        if cArr[0] == 1 and cArr[2] == 1: category_ = "X"
+        if cArr[1] == 1 and cArr[2] == 1: category_ = "Y"
+        if cArr[0] == 1 and cArr[3] == 1: category_ = "A"
+        if cArr[1] == 1 and cArr[3] == 1: category_ = "C"
+        if cArr[0] == 1 and cArr[4] == 1: category_ = "B"
+        x1_MC = np.mean( self.model( source )[:,:self.inputdim][:,0] )
+        x1_data = np.mean( target[:,:self.inputdim][:,0] )
+        x2_MC = np.mean( self.model( source )[:,:self.inputdim][:,1] )
+        x2_data = np.mean( target[:,:self.inputdim][:,1] )
+        print( "{:<5}   {:<8.1e}   {:<8.1e}   {:<6}   {:<10.1f}   {:<10.1f}   {:<10.2e}".format( 
           self.checkpoint.global_step.numpy(),
-          mmdloss_trn.numpy(),
-          mmdloss_val.numpy(),
-          self.minloss
+          mmdloss.numpy(),
+          self.minloss,
+          category_,
+          abs( 100. * ( x1_MC - x1_data ) / x1_data ),
+          abs( 100. * ( x2_MC - x2_data ) / x2_data ),
+          self.optimizer._decayed_lr( tf.float32 )
          ) )
         self.monitor( 
           self.checkpoint.global_step.numpy(), 
-          glossv_trn.numpy(), glossv_val.numpy(),
-          mmdloss_trn, mmdloss_val
+          glossv.numpy(),
+          mmdloss
         )
-        if periodic_save: self.model.save_weights( "./Results/{}_EPOCH{}".format( self.model_tag, i ) )
+        if periodic_save and mmdloss.numpy() < loss_threshold: self.model.save_weights( "./Results/{}_EPOCH{}".format( self.model_tag, i ) )
       self.checkpoint.global_step.assign_add(1) # increment counter
       save_counter += 1
       if stop_train:
@@ -613,7 +616,9 @@ class ABCDnn(object):
     if not early_stopping: 
       self.checkpointmgr.save()
       self.model.save_weights( "./Results/{}".format( self.model_tag ) )
-    print( ">> Minimum loss (validation) of {:.3e} on epoch {}".format( self.minloss, self.minepoch ) )
+    print( ">> Minimum loss of {:.3e} on epoch {}".format( self.minloss, self.minepoch ) )
+    os.system( "cp -v ./Results/{}.data-00000-of-00001 ./Results/{}_EPOCH{}.data-00000-of-00001".format( self.model_tag, self.model_tag, self.minepoch ) )
+    os.system( "cp -v ./Results/{}.index ./Results/{}_EPOCH{}.index".format( self.model_tag, self.model_tag, self.minepoch ) )
     self.save_training_monitor()
 
   def display_training(self):
@@ -700,7 +705,7 @@ class ABCDnn_training(object):
   def setup_model( self, 
           nodes_cond = 8, hidden_cond = 1, nodes_trans = 8, minibatch = 64, lr = 5.0e-3,
           depth = 1, activation = "swish", regularizer = "None", decay = 1e-1,
-          gap = 1000., beta1 = 0.9, beta2 = 0.999,
+          gap = 1000., beta1 = 0.9, beta2 = 0.999, mmd_sigmas = (0.1,1.0), mmd_weights = None,
           savedir = "/ABCDNN/", savefile = "abcdnn.pkl", disc_tag = "ABCDnn", mc_weight = None, 
           retrain = False, seed = 100, permute = True, model_tag = "best_model", verbose = False
         ):
@@ -714,6 +719,8 @@ class ABCDnn_training(object):
     self.depth = depth              # (int) number of permutations in creating layers
     self.beta1 = beta1              # (float) first moment decay rate for Adam
     self.beta2 = beta2              # (float) second moment decay rate for Adam
+    self.mmd_sigmas = mmd_sigmas    # (tuple of floats) defines the reach of the RBF kernel during training
+    self.mmd_weights = mmd_weights  # (tuple of floats, or none) defines the weight assigned to mmd loss associated with different sigma
     self.regularizer = regularizer  # (str) use of L1, L2, L1+L2 or None for training regularizers
     self.activation = activation    # (str) activation function for conditional layers
     self.savedir = savedir          # (str) save directory for output results
@@ -741,6 +748,8 @@ class ABCDnn_training(object):
       gap = self.gap,
       beta1 = self.beta1, 
       beta2 = self.beta2,
+      mmd_sigmas = self.mmd_sigmas,
+      mmd_weights = self.mmd_weights,
       retrain = self.retrain, 
       savedir = self.savedir, 
       savefile = self.savefile,
@@ -754,8 +763,8 @@ class ABCDnn_training(object):
     self.model.setrealdata( self.normedinputs_bkg, verbose = verbose )
     self.model.setmcdata( self.normedinputsmc_bkg, eventweight = self.bkgmcweight, verbose = verbose )
 
-  def train( self, steps = 10000, monitor = 1000, patience = 100, early_stopping = True, split = 0.25, display_loss = False, hpo = False, periodic_save = False ):
-    self.model.train( steps = steps, monitor = monitor, patience = patience, split = split, early_stopping = early_stopping, hpo = hpo, periodic_save = periodic_save )
+  def train( self, steps = 10000, monitor = 1000, patience = 100, early_stopping = True, display_loss = False, loss_threshold = 1e-2, hpo = False, periodic_save = False ):
+    self.model.train( steps = steps, monitor = monitor, patience = patience, early_stopping = early_stopping, loss_threshold = loss_threshold, hpo = hpo, periodic_save = periodic_save )
 
   def validate( self ):
     self.model.checkpoint.restore( self.savedir )

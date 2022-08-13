@@ -1,16 +1,17 @@
 # this script takes an existing step3 ROOT file and formats it for use in the ABCDnn training script
-# last modified September 29, 2021 by Daniel Li
+# last modified April 25, 2022 by Daniel Li
 
 import os, ROOT
 from array import array
 from argparse import ArgumentParser
 import config
+import tqdm
 
 parser = ArgumentParser()
 parser.add_argument( "-y",  "--year", default = "2017", help = "Year for sample" )
 parser.add_argument( "-sO", "--sOut", default = "source_ttbar", help = "Output name of source ROOT file" )
 parser.add_argument( "-tO", "--tOut", default = "target_data", help = "Output name of target ROOT file" )
-parser.add_argument( "-v",  "--variables", nargs = "+", default = [ "AK4HT", "DNN_5j_1to50_S2B10" ], help = "Variables to transform" )
+parser.add_argument( "-v",  "--variables", nargs = "+", default = [ "AK4HT", "DNN_1to40_3t" ], help = "Variables to transform" )
 parser.add_argument( "-p",  "--pEvents", default = 100, help = "Percent of events (0 to 100) to include from each file." )
 parser.add_argument( "-l",  "--location", default = "LPC", help = "LPC,BRUX" )
 parser.add_argument( "--doMC", action = "store_true" )
@@ -21,9 +22,10 @@ if args.location not in [ "LPC", "BRUX" ]: quit( "[ERR] Invalid -l (--location) 
 
 ttbar_xsec = 831.76
 target_lumi = {
-  "2016": 35867.,
-  "2017": 41530.,
-  "2018": 59970.
+  "2016APV": 19520.,
+  "2016":    16810.,
+  "2017":    41480.,
+  "2018":    59832.
 }
 BR = {
   "Hadronic": 0.457,
@@ -32,23 +34,29 @@ BR = {
   "HT500Njet9": 0.438 * 0.00617938417682763
 }
 num_MC = {
+  "2016APV": {
+    "Hadronic":     93137016.0,
+    "SemiLeptonic": 133661764.0,
+    "2L2Nu":        40819800.0,
+    "HT500Njet9":   4443604.0
+  },
   "2016": {
-    "Hadronic":     67963984,
-    "SemiLeptonic": 106736180,
-    "2L2Nu":        67312164,
-    "HT500Njet9":   8912888
+    "Hadronic":     207187204.,
+    "SemiLeptonic": 148086112.,
+    "2L2Nu":        47141720.,
+    "HT500Njet9":   4603338.
   },
   "2017": {
-    "Hadronic":     233815417,
-    "SemiLeptonic": 352212660,
-    "2L2Nu":        44580106 + 28515514 + 51439568 + 47012288 + 25495972,
-    "HT500Njet9":   10179200
+    "Hadronic":     233815417.,
+    "SemiLeptonic": 683741954.,
+    "2L2Nu":        105697364.,
+    "HT500Njet9":   17364358.
   },
   "2018": {
-    "Hadronic":     132368556,
-    "SemiLeptonic": 100579948,
-    "2L2Nu":        63791474,
-    "HT500Njet9":   8398387
+    "Hadronic":     322629460.,
+    "SemiLeptonic": 547148148.,
+    "2L2Nu":        126685058.,
+    "HT500Njet9":   16122362.
   }
 }
 
@@ -57,8 +65,8 @@ for finalstate in BR:
   weight_ttbar[ finalstate ] = ttbar_xsec * target_lumi[ args.year ] * BR[ finalstate ] / num_MC[ args.year ][ finalstate ]
   
 ROOT.gInterpreter.Declare("""
-    float compute_weight( float triggerXSF, float pileupWeight, float lepIdSF, float isoSF, float L1NonPrefiringProb_CommonCalc, float MCWeight_MultiLepCalc, float xsecEff, float tthfWeight, float btagCSVWeight, float btagCSVRenormWeight ){
-      return 3 * triggerXSF * pileupWeight * lepIdSF * isoSF * L1NonPrefiringProb_CommonCalc * ( MCWeight_MultiLepCalc / abs( MCWeight_MultiLepCalc ) ) * xsecEff * tthfWeight * btagCSVWeight * btagCSVRenormWeight;
+    float compute_weight( float triggerXSF, float triggerSF, float pileupWeight, float lepIdSF, float isoSF, float L1NonPrefiringProb_CommonCalc, float MCWeight_MultiLepCalc, float xsecEff, float tthfWeight, float btagDeepJetWeight, float btagDeepJet2DWeight_HTnj ){
+      return 3 * triggerXSF * triggerSF * pileupWeight * lepIdSF * isoSF * L1NonPrefiringProb_CommonCalc * ( MCWeight_MultiLepCalc / abs( MCWeight_MultiLepCalc ) ) * xsecEff * tthfWeight * btagDeepJetWeight * btagDeepJet2DWeight_HTnj;
   }
 """)
 
@@ -66,7 +74,7 @@ class ToyTree:
   def __init__( self, name, trans_var ):
     # trans_var is transforming variables
     self.name = name
-    self.rFile = ROOT.TFile( "{}.root".format( name ), "RECREATE" )
+    self.rFile = ROOT.TFile.Open( "{}.root".format( name ), "RECREATE" )
     self.rTree = ROOT.TTree( "Events", name )
     self.variables = { # variables that are used regardless of the transformation variables
       "xsecWeight": { "ARRAY": array( "f", [0] ), "STRING": "xsecWeight/F" }
@@ -111,13 +119,13 @@ def format_ntuple( output, inputs, trans_var, weight = None ):
         else:
           filter_string += "&& ( {} {} {} ) ".format( variable, ntuple.selection[ variable ][ "CONDITION" ][i], ntuple.selection[ variable ][ "VALUE" ][i] )
     rDF_filter = rDF.Filter( filter_string )
-    rDF_weight = rDF_filter.Define( "xsecWeight", "compute_weight( triggerXSF, pileupWeight, lepIdSF, isoSF, L1NonPrefiringProb_CommonCalc, MCWeight_MultiLepCalc, xsecEff, tthfWeight, btagCSVWeight, btagCSVRenormWeight )" )
+    rDF_weight = rDF_filter.Define( "xsecWeight", "compute_weight( triggerXSF, triggerSF, pileupWeight, lepIdSF, isoSF, L1NonPrefiringProb_CommonCalc, MCWeight_MultiLepCalc, xsecEff, tthfWeight, btagCSVWeight, btagCSVRenormWeight )" )
     sample_pass = rDF_filter.Count().GetValue()
     dict_filter = rDF_weight.AsNumpy( columns = list( ntuple.variables.keys() ) )
     del rDF, rDF_filter, rDF_weight
     n_inc = int( sample_pass * float( args.pEvents ) / 100. )
  
-    for n in range( n_inc ):
+    for n in tqdm.tqdm( range( n_inc ) ):
       event_data = {}
       for variable in dict_filter:
         if str( variable ) != "xsecWeight":
@@ -129,7 +137,7 @@ def format_ntuple( output, inputs, trans_var, weight = None ):
 
       ntuple.Fill( event_data )
 
-    print( ">> {}/{} events passed...".format( n_inc, sample_total ) )
+    print( ">> {}/{} events saved...".format( n_inc, sample_total ) )
   ntuple.Write()
   
 if args.doMC:

@@ -21,7 +21,7 @@ parser = ArgumentParser()
 parser.add_argument( "-c", "--checkpoints", nargs = "+", required = True )
 parser.add_argument( "-y", "--year", required = True )
 parser.add_argument( "-l", "--location", default = "LPC" )
-parser.add_argument( "-s", "--storage", default = "LOCAL", help = "LOCAL,EOS" )
+parser.add_argument( "-s", "--storage", default = "LOCAL", help = "LOCAL,EOS,BRUX" )
 parser.add_argument( "--test", action = "store_true" )
 args = parser.parse_args()
 
@@ -59,8 +59,6 @@ for checkpoint in args.checkpoints:
     ) 
   models[ checkpoint ].load_weights( "Results/" + checkpoint )
 
-
-
 # populate the step 3
 def fill_tree( sample ):
   if args.storage == "EOS":
@@ -68,7 +66,7 @@ def fill_tree( sample ):
       samples_done = subprocess.check_output( "eos root://cmseos.fnal.gov ls /store/user/{}/{}".format( config.eosUserName, config.sampleDir[ args.year ].replace( "step3", "step3_ABCDnn" ) ), shell = True ).split( "\n" )[:-1]
     except: 
       samples_done = []
-    if sample in  samples_done:
+    if sample.replace( "hadd", "ABCDnn_hadd" ) in  samples_done:
       print( ">> [WARN] {} already processed".format( sample ) )
       return
   print( ">> Formatting sample: {}".format( sample ) )
@@ -150,7 +148,7 @@ def fill_tree( sample ):
   rFile_out.Close()
   if args.storage == "EOS":
     os.system( "xrdcp -vp {} {}".format( sample.split( "/" )[-1].replace( "hadd", "ABCDnn_hadd" ), os.path.join( config.sourceDir[ "CONDOR" ], config.sampleDir[ args.year ].replace( "step3", "step3_ABCDnn" ) ) ) )
-    os.system( "rm {}".format( sample.split( "/" )[-1].replace( "hadd", "ABCDnn_hadd" ) ) )
+    #os.system( "rm {}".format( sample.split( "/" )[-1].replace( "hadd", "ABCDnn_hadd" ) ) )
   del rTree_in, rFile_in, rTree_out, rFile_out
 
 if args.test:

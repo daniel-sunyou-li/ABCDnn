@@ -6,6 +6,7 @@ import os
 import imageio
 import uproot
 import abcdnn
+import tqdm
 from argparse import ArgumentParser
 from json import loads as load_json
 from array import array
@@ -149,7 +150,7 @@ NAF = abcdnn.NAF(
 )
 NAF.load_weights( os.path.join( folder, args.tag ) )
 
-for region in predictions_best:
+for region in tqdm.tqdm( predictions_best ):
   NAF_predict = np.asarray( NAF.predict( np.asarray( inputs_nrm_region[ region ] ) ) )
   predictions_best[ region ] = NAF_predict * inputsigmas[0:2] + inputmeans[0:2] 
   

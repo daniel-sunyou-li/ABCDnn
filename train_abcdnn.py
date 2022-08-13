@@ -62,6 +62,8 @@ abcdnn_.setup_model(
   activation = hp[ "ACTIVATION" ],
   beta1 = hp[ "BETA1" ],
   beta2 = hp[ "BETA2" ],
+  mmd_sigmas = hp[ "MMD SIGMAS" ],
+  mmd_weights = hp[ "MMD WEIGHTS" ],
   minibatch = config.params[ "MODEL" ][ "MINIBATCH" ],
   savedir = config.params[ "MODEL" ][ "SAVEDIR" ],
   disc_tag = args.disc_tag,
@@ -77,7 +79,8 @@ abcdnn_.train(
   monitor = config.params[ "TRAIN" ][ "MONITOR" ],
   display_loss = config.params[ "TRAIN" ][ "SHOWLOSS" ],
   early_stopping = config.params[ "TRAIN" ][ "EARLY STOP" ],
-  periodic_save = config.params[ "TRAIN" ][ "PERIODIC SAVE" ]
+  loss_threshold = config.params[ "TRAIN" ][ "LOSS THRESHOLD" ],
+  periodic_save = config.params[ "TRAIN" ][ "PERIODIC SAVE" ],
 )
 
 abcdnn_.evaluate_regions()
