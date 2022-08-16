@@ -66,12 +66,13 @@ def fill_tree( sample ):
       samples_done = subprocess.check_output( "eos root://cmseos.fnal.gov ls /store/user/{}/{}".format( config.eosUserName, config.sampleDir[ args.year ].replace( "step3", "step3_ABCDnn" ) ), shell = True ).split( "\n" )[:-1]
     except: 
       samples_done = []
-    if sample.replace( "hadd", "ABCDnn_hadd" ) in  samples_done:
+    if sample.replace( "hadd", "ABCDnn_hadd" ) in samples_done:
       print( ">> [WARN] {} already processed".format( sample ) )
       return
   print( ">> Formatting sample: {}".format( sample ) )
   sample_ACBDnn = sample.replace( "hadd", "ABCDnn_hadd" )
-  sample = os.path.join( config.sourceDir[ args.location ], config.sampleDir[ args.year ], sample )
+  sample = os.path.join( config.sourceDir[ args.location ], config.sampleDir[ args.year ], sample ).replace( "/isilon/hadoop", "" )
+  print( sample )
   upFile = uproot.open( sample )
   upTree = upFile[ "ljmet" ]
 
@@ -108,7 +109,7 @@ def fill_tree( sample ):
   for checkpoint in args.checkpoints:
     predictions[ checkpoint ] = models[ checkpoint ].predict( normedinputs_mc )[:,0:2] * inputsigma[0:2] + inputmeans[0:2]
 
-  rFile_in = ROOT.TFile.Open( sample )
+  rFile_in = ROOT.TFile.Open( sample.replace( "/isilon/hadoop", "" ) )
   rTree_in = rFile_in.Get( "ljmet" )
 
   rFile_out = ROOT.TFile( sample.replace( "hadd", "ABCDnn_hadd" ).split("/")[-1],  "RECREATE" )
@@ -148,7 +149,7 @@ def fill_tree( sample ):
   rFile_out.Close()
   if args.storage == "EOS":
     os.system( "xrdcp -vp {} {}".format( sample.split( "/" )[-1].replace( "hadd", "ABCDnn_hadd" ), os.path.join( config.sourceDir[ "CONDOR" ], config.sampleDir[ args.year ].replace( "step3", "step3_ABCDnn" ) ) ) )
-    #os.system( "rm {}".format( sample.split( "/" )[-1].replace( "hadd", "ABCDnn_hadd" ) ) )
+    os.system( "rm {}".format( sample.split( "/" )[-1].replace( "hadd", "ABCDnn_hadd" ) ) )
   del rTree_in, rFile_in, rTree_out, rFile_out
 
 if args.test:

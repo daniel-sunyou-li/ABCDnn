@@ -552,7 +552,7 @@ class ABCDnn(object):
 
     return glossv, mmdloss
 
-  def train( self, steps = 10000, monitor = 1000, patience = 100, early_stopping = True, loss_threshold = 1.0e-2, hpo = False, periodic_save = False ):
+  def train( self, steps = 10000, monitor = 1000, patience = 100, early_stopping = True, monitor_threshold = 0, hpo = False, periodic_save = False ):
     # need to update this to use a validation set
     print( "{:<5} / {:<8} / {:<8} / {:<6} / {:<10} / {:<10} / {:<10}".format( "Epoch", "MMD", "Min MMD", "Region", "DNN %", "HT %", "L Rate" ) ) 
     impatience = 0      # don't edit
@@ -607,7 +607,7 @@ class ABCDnn(object):
           glossv.numpy(),
           mmdloss
         )
-        if periodic_save and mmdloss.numpy() < loss_threshold: self.model.save_weights( "./Results/{}_EPOCH{}".format( self.model_tag, i ) )
+        if periodic_save and i >= monitor_threshold: self.model.save_weights( "./Results/{}_EPOCH{}".format( self.model_tag, i ) )
       self.checkpoint.global_step.assign_add(1) # increment counter
       save_counter += 1
       if stop_train:
@@ -763,8 +763,8 @@ class ABCDnn_training(object):
     self.model.setrealdata( self.normedinputs_bkg, verbose = verbose )
     self.model.setmcdata( self.normedinputsmc_bkg, eventweight = self.bkgmcweight, verbose = verbose )
 
-  def train( self, steps = 10000, monitor = 1000, patience = 100, early_stopping = True, display_loss = False, loss_threshold = 1e-2, hpo = False, periodic_save = False ):
-    self.model.train( steps = steps, monitor = monitor, patience = patience, early_stopping = early_stopping, loss_threshold = loss_threshold, hpo = hpo, periodic_save = periodic_save )
+  def train( self, steps = 10000, monitor = 1000, patience = 100, early_stopping = True, display_loss = False, monitor_threshold = 0, hpo = False, periodic_save = False ):
+    self.model.train( steps = steps, monitor = monitor, patience = patience, early_stopping = early_stopping, monitor_threshold = monitor_threshold, hpo = hpo, periodic_save = periodic_save )
 
   def validate( self ):
     self.model.checkpoint.restore( self.savedir )

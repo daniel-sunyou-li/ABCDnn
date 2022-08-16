@@ -108,7 +108,7 @@ def format_ntuple( output, inputs, trans_var, weight = None ):
     if args.location == "LPC":
       rPath = os.path.join( config.sourceDir[ "LPC" ], config.sampleDir[ args.year ], input )
     elif args.location == "BRUX":
-      rPath = os.path.join( config.sourceDir[ "BRUX" ], config.sampleDir[ args.year ], input )
+      rPath = os.path.join( config.sourceDir[ "BRUX" ].replace( "/isilon/hadoop", "" ), config.sampleDir[ args.year ], input )
     rDF = ROOT.RDataFrame( "ljmet", rPath )
     sample_total = rDF.Count().GetValue()
     filter_string = ""

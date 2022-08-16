@@ -79,7 +79,7 @@ abcdnn_.train(
   monitor = config.params[ "TRAIN" ][ "MONITOR" ],
   display_loss = config.params[ "TRAIN" ][ "SHOWLOSS" ],
   early_stopping = config.params[ "TRAIN" ][ "EARLY STOP" ],
-  loss_threshold = config.params[ "TRAIN" ][ "LOSS THRESHOLD" ],
+  monitor_threshold = config.params[ "TRAIN" ][ "MONITOR THRESHOLD" ],
   periodic_save = config.params[ "TRAIN" ][ "PERIODIC SAVE" ],
 )
 
