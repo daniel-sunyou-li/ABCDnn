@@ -36,7 +36,7 @@ variables = {
   "NJets_JetSubCalc": {
     "CATEGORICAL": True,
     "TRANSFORM": False,
-    "LIMIT": [5,6],
+    "LIMIT": [4,5],
     "LATEX": "N_j"
   },
 }
@@ -56,17 +56,17 @@ selection = { # edit these accordingly
 regions = {
   "X": {
     "VARIABLE": "NJetsCSV_JetSubCalc",
-    "INCLUSIVE": True,
+    "INCLUSIVE": False,
     "MIN": 0,
     "MAX": 2,
     "SIGNAL": 2
   },
   "Y": {
     "VARIABLE": "NJets_JetSubCalc",
-    "INCLUSIVE": True,
-    "MIN": 5,
-    "MAX": 6,
-    "SIGNAL": 6
+    "INCLUSIVE": False,
+    "MIN": 4,
+    "MAX": 5,
+    "SIGNAL": 5
   }
 }
 
