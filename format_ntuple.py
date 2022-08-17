@@ -16,6 +16,8 @@ parser.add_argument( "-p",  "--pEvents", default = 100, help = "Percent of event
 parser.add_argument( "-l",  "--location", default = "LPC", help = "LPC,BRUX" )
 parser.add_argument( "--doMC", action = "store_true" )
 parser.add_argument( "--doData", action = "store_true" )
+parser.add_argument( "--JECup", action = "store_true", help = "Create an MC dataset using the JECup shift for ttbar" )
+parser.add_argument( "--JECdown", action = "store_true", help = "Create an MC dataset using the JECdown shift for ttbar" )
 args = parser.parse_args()
 
 if args.location not in [ "LPC", "BRUX" ]: quit( "[ERR] Invalid -l (--location) argument used. Quitting..." )
@@ -101,14 +103,28 @@ class ToyTree:
       self.rFile.Write()
       self.rFile.Close()
       
-def format_ntuple( output, inputs, trans_var, weight = None ):
+def format_ntuple( inputs, output, trans_var, weight = None ):
+  sampleDir = config.sampleDir[ args.year ]
+  if ( args.JECup or args.JECdown ) and "data" in output:
+    print( "[WARNING] Ignoring JECup and/or JECdown arguments for data" )
+  else if args.JECup and not args.JECdown:
+    print( "[INFO] Running with JECup samples" )
+    sampleDir = sampleDir.replace( "nominal", "JECup" )
+    output = output.replace( "mc", "mc_JECup" )
+  else if args.JECdown and not args.JECup:
+    print( "[INFO] Running with JECdown samples" )
+    sampleDir = sampleDir.replace( "nominal", "JECdown" )
+    output = output.replace( "mc", "mc_JECdown" )
+  else:
+    sys.exit( "[WARNING] Cannot run with both JECup and JECdown options. Select only one or none. Quitting..." )
+  
   ntuple = ToyTree( output, trans_var )
   for input in inputs:
     print( ">> Processing {}".format( input.split( "/" )[-1] ) )
     if args.location == "LPC":
-      rPath = os.path.join( config.sourceDir[ "LPC" ], config.sampleDir[ args.year ], input )
+      rPath = os.path.join( config.sourceDir[ "LPC" ], sampleDir, input )
     elif args.location == "BRUX":
-      rPath = os.path.join( config.sourceDir[ "BRUX" ].replace( "/isilon/hadoop", "" ), config.sampleDir[ args.year ], input )
+      rPath = os.path.join( config.sourceDir[ "BRUX" ].replace( "/isilon/hadoop", "" ), sampleDir, input )
     rDF = ROOT.RDataFrame( "ljmet", rPath )
     sample_total = rDF.Count().GetValue()
     filter_string = ""
