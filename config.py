@@ -27,23 +27,23 @@ variables = {
     "LIMIT": [0.,1.],
     "LATEX": "DNN"
   },
-  "NJets_JetSubCalc": {
-    "CATEGORICAL": True,
-    "TRANSFORM": False,
-    "LIMIT": [4,6],
-    "LATEX": "N_j"
-  },
   "NJetsCSV_JetSubCalc": {
     "CATEGORICAL": True,
     "TRANSFORM": False,
-    "LIMIT": [2,3],
+    "LIMIT": [0,2],
     "LATEX": "N_b"
-  }
+  },
+  "NJets_JetSubCalc": {
+    "CATEGORICAL": True,
+    "TRANSFORM": False,
+    "LIMIT": [5,6],
+    "LATEX": "N_j"
+  },
 }
 
 selection = { # edit these accordingly
   "NJets_JetSubCalc": { "VALUE": [ 4 ], "CONDITION": [ ">=" ] },
-  "NJetsCSV_JetSubCalc": { "VALUE": [ 2 ], "CONDITION": [ ">=" ] },
+  "NJetsCSV_JetSubCalc": { "VALUE": [ 0 ], "CONDITION": [ ">=" ] },
   "corr_met_MultiLepCalc": { "VALUE": [ 20. ], "CONDITION": [ ">" ] },
   "MT_lepMet": { "VALUE": [ 0 ], "CONDITION": [ ">" ] },
   "minDR_lepJet": { "VALUE": [ 0.4 ], "CONDITION": [ ">" ] },
@@ -55,18 +55,18 @@ selection = { # edit these accordingly
 
 regions = {
   "X": {
-    "VARIABLE": "NJets_JetSubCalc",
-    "INCLUSIVE": True,
-    "MIN": 4,
-    "MAX": 6,
-    "SIGNAL": 6
-  },
-  "Y": {
     "VARIABLE": "NJetsCSV_JetSubCalc",
     "INCLUSIVE": True,
-    "MIN": 2,
-    "MAX": 3,
-    "SIGNAL": 3
+    "MIN": 0,
+    "MAX": 2,
+    "SIGNAL": 2
+  },
+  "Y": {
+    "VARIABLE": "NJets_JetSubCalc",
+    "INCLUSIVE": True,
+    "MIN": 5,
+    "MAX": 6,
+    "SIGNAL": 6
   }
 }
 
@@ -77,11 +77,11 @@ params = {
   "MODEL": { # parameters for setting up the NAF model
     "NODES_COND": 64,
     "HIDDEN_COND": 2,
-    "NODES_TRANS": 16,
+    "NODES_TRANS": 32,
     "LRATE": 1e-4,
     "DECAY": 1e-1,
     "GAP": 1000,
-    "DEPTH": 1,
+    "DEPTH": 2,
     "REGULARIZER": "DROPOUT", # DROPOUT, NONE
     "ACTIVATION": "swish",
     "BETA1": 0.9,
@@ -95,10 +95,10 @@ params = {
     "VERBOSE": False   
   },
   "TRAIN": {
-    "EPOCHS": 10000,
-    "PATIENCE": 10000,
+    "EPOCHS": 12000,
+    "PATIENCE": 12000,
     "MONITOR": 100,
-    "MONITOR THRESHOLD": 8000,  # only save model past this epoch
+    "MONITOR THRESHOLD": 10000,  # only save model past this epoch
     "PERIODIC SAVE": True,  # saves model at each epoch step according to "MONITOR" 
     "SHOWLOSS": True,
     "EARLY STOP": True,    # early stop if validation loss begins diverging

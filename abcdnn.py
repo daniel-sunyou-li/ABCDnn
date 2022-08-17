@@ -226,7 +226,7 @@ def unweight(pddata):
     idx += nmatches
   return pddata
   
-def prepdata( rSource, rTarget, variables, mc_weight = None ):
+def prepdata( rSource, rTarget, variables, regions, mc_weight = None ):
 # mc_weight(str) = option for weighting MC by the xsec
 # rSource (str) = source ROOT file
 # rTarget (str) = target ROOT file
@@ -234,10 +234,15 @@ def prepdata( rSource, rTarget, variables, mc_weight = None ):
 # variables (dict) = list of all variables considered and associated parameters
 
   # set up one-hot encoder
-  vars = [ str( var ) for var in sorted( list( variables.keys() ) ) ]
-  categorical = [ variables[ var ][ "CATEGORICAL" ] for var in sorted( list( variables.keys() ) ) ]
-  upperlimit  = [ variables[ var ][ "LIMIT" ][1] for var in sorted( list( variables.keys() ) ) ]
-  lowerlimit  = [ variables[ var ][ "LIMIT" ][0] for var in sorted( list( variables.keys() ) ) ]
+  vNames = [ str( key ) for key in variables if variables[key]["TRANSFORM"] ]
+  if regions["Y"]["VARIABLE"] in variables and regions["X"]["VARIABLE"] in variables:
+    vNames.append( regions["Y"]["VARIABLE"] )
+    vNames.append( regions["X"]["VARIABLE"] )
+  else:
+    sys.exit( "[ERROR] Control variables are not listed in config.variables, please include. Exiting..." )
+  categorical = [ variables[ vName ][ "CATEGORICAL" ] for vName in vNames ]
+  upperlimit  = [ variables[ vName ][ "LIMIT" ][1] for vName in vNames ]
+  lowerlimit  = [ variables[ vName ][ "LIMIT" ][0] for vName in vNames ]
   
   _onehotencoder = OneHotEncoder_int( categorical, lowerlimit = lowerlimit, upperlimit = upperlimit )
 
@@ -247,8 +252,8 @@ def prepdata( rSource, rTarget, variables, mc_weight = None ):
   tree_mc = mcf[ 'Events' ]
   tree_data = dataf[ 'Events' ]
   
-  mc_dfs = tree_mc.pandas.df( vars )
-  data_dfs = tree_data.pandas.df( vars )
+  mc_dfs = tree_mc.pandas.df( vNames )
+  data_dfs = tree_data.pandas.df( vNames )
 
   # do not consider cross section weight. The weight of the resut file is filled with 1.
   if mc_weight == None:
@@ -385,6 +390,7 @@ class ABCDnn(object):
 
   def category_sorted(self, numpydata, verbose ):
     categoricals, categorical_cats, unique_counts = np.unique( numpydata[:, self.inputdimreal:], axis=0, return_inverse = True, return_counts = True)
+    print( categoricals )
     if verbose: 
       print( "Data has {} unique categorical features. The counts in categories are".format( categoricals ) )
       print( unique_counts )
@@ -656,7 +662,7 @@ class ABCDnn_training(object):
 
     rawinputs, rawinputsmc, rawmcweight, normedinputs, normedinputsmc, inputmeans, \
       inputsigma, ncat_per_feature = prepdata( rSource, rTarget, 
-      variables, mc_weight )
+      variables, regions, mc_weight )
 
     self.rawinputs = rawinputs                # unnormalized data tree after event selection
     self.rawinputsmc = rawinputsmc            # unnormalized mc tree after event selection

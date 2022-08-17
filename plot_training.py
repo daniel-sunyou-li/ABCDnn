@@ -57,17 +57,17 @@ tFile = uproot.open( args.target )
 sTree = sFile[ "Events" ]
 tTree = tFile[ "Events" ]
 
-variables = []
-variables_transform = []
-categorical = []
-lowerlimit = []
-upperlimit = []
-for variable in sorted( list( config.variables.keys() ) ):
-  if config.variables[ variable ][ "TRANSFORM" ]: variables_transform.append( variable )
-  variables.append( variable )
-  categorical.append( config.variables[ variable ][ "CATEGORICAL" ] )
-  upperlimit.append( config.variables[ variable ][ "LIMIT" ][1] )
-  lowerlimit.append( config.variables[ variable ][ "LIMIT" ][0] )
+variables = [ str( key ) for key in config.variables.keys() if config.variables[key]["TRANSFORM"] ]
+variables_transform = [ str( key ) for key in config.variables.keys() if config.variables[key]["TRANSFORM"] ]
+if config.regions["Y"]["VARIABLE"] in config.variables and config.regions["X"]["VARIABLE"] in config.variables:
+  variables.append( config.regions["Y"]["VARIABLE"] )
+  variables.append( config.regions["X"]["VARIABLE"] )
+else:
+  sys.exit( "[ERROR] Control variables not listed in config.variables, please add. Exiting..." )
+
+categorical = [ config.variables[ vName ][ "CATEGORICAL" ] for vName in variables ]
+lowerlimit = [ config.variables[ vName ][ "LIMIT" ][0] for vName in variables ]
+upperlimit = [ config.variables[ vName ][ "LIMIT" ][1] for vName in variables ]
 
 print( ">> Found {} variables: ".format( len( variables ) ) )
 for i, variable in enumerate( variables ):
