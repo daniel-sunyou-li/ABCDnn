@@ -16,9 +16,9 @@ import abcdnn
 parser = ArgumentParser()
 parser.add_argument( "-s", "--source", default = "", required = False )
 parser.add_argument( "-t", "--target", default = "", required = False )
-parser.add_argument( "-hpo", "--hpo", action = "store_true" )
-parser.add_argument( "-r", "--randomize", action = "store_true" )
-parser.add_argument( "-v", "--verbose", action = "store_true" )
+parser.add_argument( "--hpo", action = "store_true" )
+parser.add_argument( "--randomize", action = "store_true" )
+parser.add_argument( "--verbose", action = "store_true" )
 parser.add_argument( "-m", "--modeltag", default = "best_model" )
 parser.add_argument( "-d", "--disc_tag", default = "ABCDnn" )
 args = parser.parse_args()
@@ -27,17 +27,17 @@ if args.source != "": config.params[ "EVENTS" ][ "SOURCE" ] = args.source
 if args.target != "": config.params[ "EVENTS" ][ "TARGET" ] = args.target
 if args.randomize: config.params["MODEL"]["SEED"] = np.random.randint( 100000 )
 
-nTrans = len( [ var for var in config.variables if config.variables[ var ][ "TRANSFORM" ] == True ] )
-    
 hp = { key: config.params["MODEL"][key] for key in config.params[ "MODEL" ]  }
+
+print( "[START] Training ABCDnn model {} iwth discriminator: {}".format( args.modeltag, args.disc_tag ) )
 if args.hpo:
-  print( ">> Running on optimized parameters" )
+  print( "  [INFO] Running on optimized parameters" )
   with open( os.path.join( config.results_path, "opt_params.json" ), "r" ) as jsf:
     hpo_cfg = load_json( jsf.read() )
     for key in hpo_cfg["PARAMS"]:
       hp[key] = hpo_cfg["PARAMS"][key]
 else:
-  print( ">> Running on fixed parameters" )
+  print( "  [INFO] Running on fixed parameters" )
 for key in hp: print( "   - {}: {}".format( key, hp[key] ) )
                
 abcdnn_ = abcdnn.ABCDnn_training()
@@ -59,6 +59,7 @@ abcdnn_.setup_model(
   gap = hp[ "GAP" ],
   depth = hp[ "DEPTH" ],
   regularizer = hp[ "REGULARIZER" ],
+  initializer = hp[ "INITIALIZER" ],
   activation = hp[ "ACTIVATION" ],
   beta1 = hp[ "BETA1" ],
   beta2 = hp[ "BETA2" ],
@@ -70,6 +71,7 @@ abcdnn_.setup_model(
   seed = config.params[ "MODEL" ][ "SEED" ],
   verbose = config.params[ "MODEL" ][ "VERBOSE" ],
   model_tag = args.modeltag,
+  permute = config.params[ "MODEL" ][ "PERMUTE" ],
   retrain = config.params[ "MODEL" ][ "RETRAIN" ]
 )
 

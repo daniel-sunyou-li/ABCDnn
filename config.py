@@ -8,8 +8,9 @@ postfix = "3t"
 sourceDir = {
   "CONDOR": "root://cmseos.fnal.gov//store/user/{}/".format( eosUserName ),
   "LPC": "root://cmsxrootd.fnal.gov//store/user/{}/".format( eosUserName ),
-  "BRUX": "root://brux30.hep.brown.edu:1094//isilon/hadoop/store/user/dali/"
+  "BRUX": "root://brux30.hep.brown.edu:1094//store/user/{}/".format( eosUserName )
 }
+
 sampleDir = {
   year: "FWLJMET106XUL_singleLep{}UL_RunIISummer20_{}_step3/nominal/".format( year, postfix ) for year in [ "2016APV", "2016", "2017", "2018" ]
 }
@@ -36,7 +37,7 @@ variables = {
   "NJets_JetSubCalc": {
     "CATEGORICAL": True,
     "TRANSFORM": False,
-    "LIMIT": [4,5],
+    "LIMIT": [5,6],
     "LATEX": "N_j"
   },
 }
@@ -56,17 +57,17 @@ selection = { # edit these accordingly
 regions = {
   "X": {
     "VARIABLE": "NJetsCSV_JetSubCalc",
-    "INCLUSIVE": False,
+    "INCLUSIVE": True,
     "MIN": 0,
     "MAX": 2,
     "SIGNAL": 2
   },
   "Y": {
     "VARIABLE": "NJets_JetSubCalc",
-    "INCLUSIVE": False,
-    "MIN": 4,
-    "MAX": 5,
-    "SIGNAL": 5
+    "INCLUSIVE": True,
+    "MIN": 5,
+    "MAX": 6,
+    "SIGNAL": 6
   }
 }
 
@@ -75,30 +76,32 @@ params = {
     "MCWEIGHT": None
   },
   "MODEL": { # parameters for setting up the NAF model
-    "NODES_COND": 64,
+    "NODES_COND": 50,
     "HIDDEN_COND": 2,
-    "NODES_TRANS": 32,
-    "LRATE": 1e-4,
-    "DECAY": 1e-1,
-    "GAP": 1000,
+    "NODES_TRANS": 8,
+    "LRATE": 5e-3,
+    "DECAY": 1,
+    "GAP": 200,
     "DEPTH": 2,
-    "REGULARIZER": "DROPOUT", # DROPOUT, NONE
-    "ACTIVATION": "swish",
+    "REGULARIZER": "ALL", # DROPOUT, BATCHNORM, ALL, NONE
+    "INITIALIZER": "he_normal", # he_normal, RandomNormal
+    "ACTIVATION": "relu",
     "BETA1": 0.9,
     "BETA2": 0.999,
     "MMD SIGMAS": [1.0],
     "MMD WEIGHTS": None,
     "MINIBATCH": 2**11,
     "RETRAIN": True,
+    "PERMUTE": False,
     "SEED": 101, # this can be overridden when running train_abcdnn.py
     "SAVEDIR": "./Results/",
-    "VERBOSE": False   
+    "VERBOSE": False  
   },
   "TRAIN": {
-    "EPOCHS": 12000,
-    "PATIENCE": 12000,
-    "MONITOR": 100,
-    "MONITOR THRESHOLD": 10000,  # only save model past this epoch
+    "EPOCHS": 500,
+    "PATIENCE": 500,
+    "MONITOR": 25,
+    "MONITOR THRESHOLD": 0,  # only save model past this epoch
     "PERIODIC SAVE": True,  # saves model at each epoch step according to "MONITOR" 
     "SHOWLOSS": True,
     "EARLY STOP": True,    # early stop if validation loss begins diverging

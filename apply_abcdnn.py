@@ -51,11 +51,12 @@ for checkpoint in args.checkpoints:
       conddim     = params["CONDDIM"],
       activation  = params["ACTIVATION"],
       regularizer = params["REGULARIZER"],
+      initializer = params["INITIALIZER"],
       nodes_cond  = params["NODES_COND"],
       hidden_cond = params["HIDDEN_COND"],
       nodes_trans = params["NODES_TRANS"],
       depth       = params["DEPTH"],
-      permute = True
+      permute     = params["PERMUTE"]
     ) 
   models[ checkpoint ].load_weights( "Results/" + checkpoint )
 
@@ -78,17 +79,18 @@ def fill_tree( sample ):
 
   variables = []
   v_in = []
-  categorical = []
-  lowerlimit = []
-  upperlimit = []
   predictions = {}
+  
+  for variable in config.variables.keys():
+    if config.variables[ variable ][ "TRANSFORM" ]:
+      v_in.append( str( variable ) )
+      variables.append( str( variable ) )
+  variables.append( config.regions[ "Y" ][ "VARIABLE" ] )
+  variables.append( config.regions[ "X" ][ "VARIABLE" ] )
 
-  for variable in sorted( config.variables.keys() ):
-    if config.variables[ variable ][ "TRANSFORM" ]: v_in.append( variable )
-    variables.append( variable )
-    categorical.append( config.variables[ variable ][ "CATEGORICAL" ] )
-    upperlimit.append( config.variables[ variable ][ "LIMIT" ][1] )
-    lowerlimit.append( config.variables[ variable ][ "LIMIT" ][0] )
+  categorical = [ config.variables[ variable ][ "CATEGORICAL" ] for variable in variables ]
+  lowerlimit = [ config.variables[ variable ][ "LIMIT" ][0] for variable in variables ]
+  upperlimit = [ config.variables[ variable ][ "LIMIT" ][1] for variable in variables ]
 
   _onehotencoder = abcdnn.OneHotEncoder_int( categorical, lowerlimit = lowerlimit, upperlimit = upperlimit )
 

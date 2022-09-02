@@ -16,8 +16,10 @@ def invsigmoid( x ):
   #xclip = tf.clip_by_value( x, 1e-6, 1.0 - 1e-6 )
   return tf.math.log( x / ( 1.0 - x ) )
 
-def NAF( inputdim, conddim, activation, regularizer, nodes_cond, hidden_cond, nodes_trans, depth, permute ):
+def NAF( inputdim, conddim, activation, regularizer, initializer, nodes_cond, hidden_cond, nodes_trans, depth, permute ):
 # neural autoregressive flow is a chain of MLP networks used for the conditioner and transformer parts of the flow
+# inputdim = number of transformed inputs (should be 2)
+# conddim = conditional categories ( should be 5, 3 for X and 2 for Y control variables )
   activation_key = { # edit this if you add options to config.hyper dict with more activation functions
     "swish": tf.nn.swish,
     "softplus": tf.nn.softplus,
@@ -25,9 +27,9 @@ def NAF( inputdim, conddim, activation, regularizer, nodes_cond, hidden_cond, no
     "elu": tf.nn.elu
   }
   
-  xin = layers.Input( shape = ( inputdim + conddim, ), name = "INPUT_LAYER" )
-  xcondin = xin[ :, inputdim: ]
-  xfeatures = xin[ :, :inputdim ]
+  xin = layers.Input( shape = ( inputdim + conddim, ), name = "INPUT_LAYER" ) # the expected input data shape should be 7
+  xcondin = xin[ :, inputdim: ] # expected conditional categories layer
+  xfeatures = xin[ :, :inputdim ] # expected transformed input layer
   nextfeature = xfeatures
   
   for idepth in range( int( depth ) ):
@@ -36,39 +38,44 @@ def NAF( inputdim, conddim, activation, regularizer, nodes_cond, hidden_cond, no
       permutation = tf.constant( randperm )
     else:
       permutation = tf.range( inputdim, dtype = "int32" )
-    permuter = tfp.bijectors.Permute( permutation = permutation, name = "PERMUTER_{}".format( idepth ) )
-    xfeatures_permuted = permuter.forward( nextfeature )
-    outlist = []
-    for i in range( inputdim ):
+
+    # tfp.bijectors.Permute permutes rightmost dimension of a tensor
+    #   - permutation is an int-like vector-shaped tensor representing the permutation to apply
+    # if you feed in permuter.forward([=1.,0,1.]) --> [1.,0.,-1.]
+
+    permuter = tfp.bijectors.Permute( permutation = permutation) # initialize the permuter
+    xfeatures_permuted = permuter.forward( nextfeature ) # apply permutation to transformation variables
+    outlist = [] # stores two concurrent, but independent models for the two transforming inputs
+    for i in range( inputdim ): 
       x = tf.reshape( xfeatures_permuted[ :, i ], [ -1, 1 ] )
-      
-      # conditioner network
-      net1 = x
       condnet = xcondin
       for iv in range( hidden_cond ):
-        condnet = layers.Dense( nodes_cond, activation = activation_key[ activation ], name = "COND_DENSE_{}_{}_{}".format( idepth, i, iv ) )( condnet )
-        if regularizer.upper() in [ "DROPOUT" ]:
-          condnet = layers.Dropout( 0.3 )( condnet )
-      w1 = layers.Dense( nodes_trans, activation = tf.nn.softplus, name = "SIGMOID_WEIGHT_{}_{}".format( idepth, i ) )( condnet ) # has to be softplus for output to be >0
+        if regularizer.upper() in [ "BATCHNORM", "ALL" ]:
+          condnet = layers.BatchNormalization( name = "BATCHNORM_{}_{}_{}".format( idepth, i, iv ) )( condnet )
+        if regularizer.upper() in [ "DROPOUT", "ALL" ]:
+          condnet = layers.Dropout( 0.3, name = "DROPOUT_{}_{}_{}".format( idepth, i, iv ) )( condnet )
+        condnet = layers.Dense( nodes_cond, activation = activation_key[ activation ], kernel_initializer = initializer, name = "COND_DENSE_{}_{}_{}".format( idepth, i, iv ) )( condnet )
+      if regularizer.upper() in [ "BATCHNORM", "ALL" ]:
+        condnet = layers.BatchNormalization( name = "BATCHNORM_{}_{}".format( idepth, i ) )( condnet )
+      if regularizer.upper() in [ "DROPOUT", "ALL" ]:
+        condnet = layers.Dropout( 0.3, name = "DROPOUT_{}_{}".format( idepth, i ) )( condnet )
+      w1 = layers.Dense( nodes_trans, activation = tf.nn.softplus, kernel_initializer = initializer, name = "SIGMOID_WEIGHT_{}_{}".format( idepth, i ) )( condnet ) # has to be softplus for output to be >0
       b1 = layers.Dense( nodes_trans, activation = None, name = "SIGMOID_BIAS_{}_{}".format( idepth, i ) )( condnet )
       del condnet
 
-      # transforming layer
-      net2 = tf.nn.sigmoid( w1 * net1 + b1,  name = "TRANS_DENSE_{}_{}".format( idepth, i ) ) 
+      # apply sigmoidal transformation
+      sig = tf.nn.sigmoid( w1 * x + b1,  name = "SIGMOID_{}_{}".format( idepth, i ) ) 
        
-      # reverse conditioner network
+      # inverse conditioner network
       condnet = xcondin
-      for iv in range( hidden_cond ):
-        if regularizer.upper() in [ "DROPOUT" ]:
-          condnet = layers.Dropout( 0.3 )( condnet )
-        condnet = layers.Dense( nodes_cond, activation = activation_key[ activation ], name = "INV_COND_DENSE_{}_{}_{}".format( idepth, i, iv ) )( condnet )
-      w2 = layers.Dense( nodes_trans, activation = tf.nn.softplus, name = "INV_SIGMOID_WEIGHT_{}_{}".format( idepth, i ) )( condnet )
-      w2 = w2 / ( 1.0e-3 + tf.reduce_sum( w2, axis = 1, keepdims = True ) ) # normalize the transformer output
+      #condnet = layers.Dense( nodes_cond, activation = activation_key[ activation ], name = "INV_COND_DENSE_{}_{}_{}".format( idepth, i, iv ) )( condnet )
+      w2 = layers.Dense( nodes_trans, activation = tf.nn.softplus, kernel_initializer = "glorot_normal", name = "INV_SIGMOID_WEIGHT_{}_{}".format( idepth, i ) )( condnet )
+      w2 = w2 / ( 1e-5 + tf.reduce_sum( w2, axis = 1, keepdims = True ) ) # normalize the transformer output for softmax weighting to retain normalization in sigmoidal space
       
       # inverse transformer network
-      net3 = invsigmoid( tf.reduce_sum( net2 * w2, axis = 1, keepdims = True ) )
+      sigflow = invsigmoid( tf.reduce_sum( sig *  w2, axis = 1, keepdims = True ) )
       
-      outlist.append( net3 )
+      outlist.append( sigflow )
       xcondin = tf.concat( [ xcondin, x ], axis = 1 )
       
     outputlayer_permuted = tf.concat( outlist, axis = 1 )
@@ -253,7 +260,9 @@ def prepdata( rSource, rTarget, variables, regions, mc_weight = None ):
   tree_data = dataf[ 'Events' ]
   
   mc_dfs = tree_mc.pandas.df( vNames )
+  mc_dfs = mc_dfs.loc[ ( mc_dfs[ regions[ "X" ][ "VARIABLE" ] ] >= regions[ "X" ][ "MIN" ] ) & ( mc_dfs[ regions[ "Y" ][ "VARIABLE" ] ] >= regions[ "Y" ][ "MIN" ] ) ]
   data_dfs = tree_data.pandas.df( vNames )
+  data_dfs = data_dfs.loc[ ( data_dfs[ regions[ "X" ][ "VARIABLE" ] ] >= regions[ "X" ][ "MIN" ] ) & ( data_dfs[ regions[ "Y" ][ "VARIABLE" ] ] >= regions[ "Y" ][ "MIN" ] ) ]
 
   # do not consider cross section weight. The weight of the resut file is filled with 1.
   if mc_weight == None:
@@ -313,7 +322,7 @@ def prepdata( rSource, rTarget, variables, regions, mc_weight = None ):
 # construct the ABCDnn model here
 class ABCDnn(object):
   def __init__( self, inputdim_categorical_list, inputdim, nodes_cond, hidden_cond,
-               nodes_trans, minibatch, activation, regularizer,
+               nodes_trans, minibatch, activation, regularizer, initializer,
                depth, lr, gap, conddim, beta1, beta2, mmd_sigmas, mmd_weights, decay,
                retrain, savedir, savefile, disc_tag, 
                seed, permute, verbose, model_tag ):
@@ -327,6 +336,7 @@ class ABCDnn(object):
     self.nodes_trans = nodes_trans
     self.activation = activation
     self.regularizer = regularizer
+    self.initializer = initializer
     self.depth = depth
     self.lr = lr 
     self.decay = decay
@@ -373,6 +383,7 @@ class ABCDnn(object):
       conddim = self.conddim, 
       activation = self.activation,
       regularizer = self.regularizer,
+      initializer = self.initializer,
       nodes_cond = self.nodes_cond, 
       hidden_cond = self.hidden_cond,
       nodes_trans = self.nodes_trans, 
@@ -383,8 +394,7 @@ class ABCDnn(object):
     self.optimizer = keras.optimizers.Adam(
       learning_rate = SawtoothSchedule( self.lr, self.lr * self.decay, self.gap, 0 ),  
       beta_1 = self.beta1, beta_2 = self.beta2, 
-      epsilon = 1e-5, 
-      name = 'nafopt'
+      epsilon = 1e-7, 
     )
     pass
 
@@ -441,7 +451,9 @@ class ABCDnn(object):
       "DECAY": self.decay, 
       "GAP": self.gap,
       "DEPTH": self.depth,
+      "PERMUTE": self.permute,
       "REGULARIZER": self.regularizer,
+      "INITIALIZER": self.initializer,
       "ACTIVATION": self.activation,
       "BETA1": self.beta1, 
       "BETA2": self.beta2, 
@@ -597,8 +609,12 @@ class ABCDnn(object):
         if cArr[0] == 1 and cArr[4] == 1: category_ = "B"
         x1_MC = np.mean( self.model( source )[:,:self.inputdim][:,0] )
         x1_data = np.mean( target[:,:self.inputdim][:,0] )
-        x2_MC = np.mean( self.model( source )[:,:self.inputdim][:,1] )
-        x2_data = np.mean( target[:,:self.inputdim][:,1] )
+        try:
+          x2_MC = np.mean( self.model( source )[:,:self.inputdim][:,1] )
+          x2_data = np.mean( target[:,:self.inputdim][:,1] )
+        except:
+          x2_MC = 1
+          x2_data = 1
         print( "{:<5}   {:<8.1e}   {:<8.1e}   {:<6}   {:<10.1f}   {:<10.1f}   {:<10.2e}".format( 
           self.checkpoint.global_step.numpy(),
           mmdloss.numpy(),
@@ -710,10 +726,10 @@ class ABCDnn_training(object):
 
   def setup_model( self, 
           nodes_cond = 8, hidden_cond = 1, nodes_trans = 8, minibatch = 64, lr = 5.0e-3,
-          depth = 1, activation = "swish", regularizer = "None", decay = 1e-1,
+          depth = 1, activation = "swish", regularizer = "None", initializer = "RandomNormal", decay = 1e-1,
           gap = 1000., beta1 = 0.9, beta2 = 0.999, mmd_sigmas = (0.1,1.0), mmd_weights = None,
           savedir = "/ABCDNN/", savefile = "abcdnn.pkl", disc_tag = "ABCDnn", mc_weight = None, 
-          retrain = False, seed = 100, permute = True, model_tag = "best_model", verbose = False
+          retrain = False, seed = 100, permute = False, model_tag = "best_model", verbose = False
         ):
     self.nodes_cond = nodes_cond    # (int) number of nodes in conditional layer(s)
     self.hidden_cond = hidden_cond  # (int) number of conditional layers
@@ -728,6 +744,7 @@ class ABCDnn_training(object):
     self.mmd_sigmas = mmd_sigmas    # (tuple of floats) defines the reach of the RBF kernel during training
     self.mmd_weights = mmd_weights  # (tuple of floats, or none) defines the weight assigned to mmd loss associated with different sigma
     self.regularizer = regularizer  # (str) use of L1, L2, L1+L2 or None for training regularizers
+    self.initializer = initializer
     self.activation = activation    # (str) activation function for conditional layers
     self.savedir = savedir          # (str) save directory for output results
     self.savefile = savefile        # (str) save file name for output results
@@ -748,6 +765,7 @@ class ABCDnn_training(object):
       minibatch = self.minibatch,
       activation = self.activation,
       regularizer = self.regularizer,
+      initializer = self.initializer,
       depth = self.depth, 
       lr = self.lr,
       decay = self.decay, 
@@ -848,38 +866,38 @@ class ABCDnn_training(object):
         self.plottext.append( text )
       
         # format the data in a plottable/saveable manner
-        input_data = self.normedinputs[ self.select[ "DATA" ][ self.region[i] ] ]
-        raw_data = self.rawinputs.loc[ self.select[ "DATA" ][ self.region[i] ] ]
-        self.rawdata.append( raw_data )
+        #input_data = self.normedinputs[ self.select[ "DATA" ][ self.region[i] ] ]
+        #raw_data = self.rawinputs.loc[ self.select[ "DATA" ][ self.region[i] ] ]
+        #self.rawdata.append( raw_data )
 
-        input_mc = self.normedinputsmc[ self.select[ "MC" ][ self.region[i] ] ]
-        raw_mc = self.rawinputsmc.loc[ self.select[ "MC" ][ self.region[i] ] ]
-        self.rawmc.append( raw_mc )
+        #input_mc = self.normedinputsmc[ self.select[ "MC" ][ self.region[i] ] ]
+        #raw_mc = self.rawinputsmc.loc[ self.select[ "MC" ][ self.region[i] ] ]
+        #self.rawmc.append( raw_mc )
 
-        if self.rawmcweight is None:
-          mcweight = [1.] * input_mc.shape[0]
-        else:
-          mcweight = self.rawmcweight[ self.select[ "MC" ][ self.region[i] ] ].flatten()
-        self.mcweight.append( mcweight )
+        #if self.rawmcweight is None:
+        #  mcweight = [1.] * input_mc.shape[0]
+        #else:
+        #  mcweight = self.rawmcweight[ self.select[ "MC" ][ self.region[i] ] ].flatten()
+        #self.mcweight.append( mcweight )
 
-        n_batches = int( input_mc.shape[0] / self.minibatch )
-        fake = []
-        for j in range( n_batches - 1 ):
-          xin = input_mc[ j * self.minibatch: ( j + 1 ) * self.minibatch:, : ]
-          xgen = self.model.model.predict( xin )
-          fake.append( xgen )
-        xin = input_mc[ ( n_batches - 1 ) * self.minibatch:, : ]
-        xgen = self.model.model.predict( xin )
-        fake.append( xgen )
+        #n_batches = int( input_mc.shape[0] / self.minibatch )
+        #fake = []
+        #for j in range( n_batches - 1 ):
+        #  xin = input_mc[ j * self.minibatch: ( j + 1 ) * self.minibatch:, : ]
+        #  xgen = self.model.model.predict( xin )
+        #  fake.append( xgen )
+        #xin = input_mc[ ( n_batches - 1 ) * self.minibatch:, : ]
+        #xgen = self.model.model.predict( xin )
+        #fake.append( xgen )
 
-        this_fakedata = np.vstack( fake )
-        this_fakedata = this_fakedata * self.inputsigma[ :, :self.inputdim ] + self.inputmeans[ :, :self.inputdim ]
-        n_fakes = this_fakedata.shape[0]
-        this_fakedata = np.hstack( ( this_fakedata, 
-                                  np.array( [x] * n_fakes ).reshape( ( n_fakes, 1 ) ), 
-                                  np.array( [y] * n_fakes ).reshape( ( n_fakes, 1 ) ) 
-                                  ) )
-        self.fakedata.append( this_fakedata )
+        #this_fakedata = np.vstack( fake )
+        #this_fakedata = this_fakedata * self.inputsigma[ :, :self.inputdim ] + self.inputmeans[ :, :self.inputdim ]
+        #n_fakes = this_fakedata.shape[0]
+        #this_fakedata = np.hstack( ( this_fakedata, 
+        #                          np.array( [x] * n_fakes ).reshape( ( n_fakes, 1 ) ), 
+        #                          np.array( [y] * n_fakes ).reshape( ( n_fakes, 1 ) ) 
+        #                          ) )
+        #self.fakedata.append( this_fakedata )
 
         i += 1
       

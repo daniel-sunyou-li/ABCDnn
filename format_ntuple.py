@@ -1,7 +1,7 @@
 # this script takes an existing step3 ROOT file and formats it for use in the ABCDnn training script
 # last modified April 25, 2022 by Daniel Li
 
-import os, ROOT
+import os, sys, ROOT
 from array import array
 from argparse import ArgumentParser
 import config
@@ -107,15 +107,15 @@ def format_ntuple( inputs, output, trans_var, weight = None ):
   sampleDir = config.sampleDir[ args.year ]
   if ( args.JECup or args.JECdown ) and "data" in output:
     print( "[WARNING] Ignoring JECup and/or JECdown arguments for data" )
-  else if args.JECup and not args.JECdown:
+  elif args.JECup and not args.JECdown:
     print( "[INFO] Running with JECup samples" )
     sampleDir = sampleDir.replace( "nominal", "JECup" )
     output = output.replace( "mc", "mc_JECup" )
-  else if args.JECdown and not args.JECup:
+  elif args.JECdown and not args.JECup:
     print( "[INFO] Running with JECdown samples" )
     sampleDir = sampleDir.replace( "nominal", "JECdown" )
     output = output.replace( "mc", "mc_JECdown" )
-  else:
+  elif args.JECdown and args.JECup:
     sys.exit( "[WARNING] Cannot run with both JECup and JECdown options. Select only one or none. Quitting..." )
   
   ntuple = ToyTree( output, trans_var )

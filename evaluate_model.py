@@ -28,22 +28,22 @@ parser.add_argument( "-s", "--source", required = True )
 parser.add_argument( "-t", "--target", required = True )
 parser.add_argument( "-m", "--tag", required = True )
 parser.add_argument( "-b", "--batch", default = "10", help = "Number of batches to compute over" )
-parser.add_argument( "-s", "--size", default = "1028", help = "Size of each batch for computing MMD loss" )
+parser.add_argument( "-n", "--size", default = "1028", help = "Size of each batch for computing MMD loss" )
 parser.add_argument( "-r", "--region", default = "D", help = "Region to evaluate (X,Y,A,B,C,D)" )
 parser.add_argument( "--bayesian", action = "store_true", help = "Run Bayesian approximation to estimate model uncertainty" )
-parser.add_argument( "--closure", action = "store_true", help = "Get the closure uncertainty (i.e. % difference between predicted and true yield)" )
+parser.add_argument( "--closure", action = "store_true", help = "Get the closure uncertainty (i.e. percent difference between predicted and true yield)" )
 parser.add_argument( "--stat", action = "store_true", help = "Get the statistical uncertainty of predicted yield" )
-
+parser.add_argument( "--verbose", action = "store_true" )
 args = parser.parse_args()
 
-def prepare_data( fSource, fTarget, cVariables, cRegions ):
+def prepare_data( fSource, fTarget, cVariables, cRegions, params ):
   sFile = uproot.open( fSource )
   tFile = uproot.open( fTarget )
   sTree = sFile[ "Events" ]
   tTree = tFile[ "Events" ]
   
-  variables = [ str( key ) for key in cVariables.keys() if cVariables[key]["TRANSFORM"] ]
-  variables_transform = [ str( key ) for key in cVariables.keys() if cVariables[key]["TRANSFORM"] ]
+  variables = [ str( key ) for key in list( cVariables.keys() ) if cVariables[key]["TRANSFORM"] ]
+  variables_transform = [ str( key ) for key in list( cVariables.keys() ) if cVariables[key]["TRANSFORM"] ]
   if cRegions["Y"]["VARIABLE"] in cVariables and cRegions["X"]["VARIABLE"] in cVariables:
     variables.append( cRegions["Y"]["VARIABLE"] )
     variables.append( cRegions["X"]["VARIABLE"] )
@@ -112,10 +112,10 @@ def prepare_data( fSource, fTarget, cVariables, cRegions ):
   inputsigmas = np.hstack( [ float( sigma ) for sigma in params[ "INPUTSIGMAS" ] ] )
   for region in inputs_src_region:
     encoder[region] = abcdnn.OneHotEncoder_int( categorical, lowerlimit = lowerlimit, upperlimit = upperlimit )
-    source_enc_region[ region ] = encoder[region].encode( source_enc_region[ region ].to_numpy( dtype = np.float32 ) )
-    target_enc_region[ region ] = encoder[region].encode( target_enc_region[ region ].to_numpy( dtype = np.float32 ) )
+    source_enc_region[ region ] = encoder[region].encode( inputs_src_region[ region ].to_numpy( dtype = np.float32 ) )
+    target_enc_region[ region ] = encoder[region].encode( inputs_tgt_region[ region ].to_numpy( dtype = np.float32 ) )
     source_nrm_region[ region ] = ( source_enc_region[ region ] - inputmeans ) / inputsigmas
-    target_enc_region[ region ] = ( target_enc_region[ region ] - inputmeans ) / inputsigmas
+    target_nrm_region[ region ] = ( target_enc_region[ region ] - inputmeans ) / inputsigmas
     
   return source_nrm_region, target_nrm_region
   
@@ -125,6 +125,7 @@ def prepare_model( checkpoint, params ):
     conddim     = params[ "CONDDIM" ],
     activation  = params[ "ACTIVATION" ],
     regularizer = params[ "REGULARIZER" ],
+    initializer = params[ "INITIALIZER" ],
     nodes_cond  = params[ "NODES_COND" ],
     hidden_cond = params[ "HIDDEN_COND" ],
     nodes_trans = params[ "NODES_TRANS" ],
@@ -135,20 +136,45 @@ def prepare_model( checkpoint, params ):
   return model
 
 def get_batch( X, Y, size, region ):
-  xBatch = np.random.choice( X[region], size = size )
-  yBatch = np.random.choice( Y[region], size = size )
+  Xmask = np.random.choice( np.shape( X[region] )[0], size = size, replace = False )
+  Ymask = np.random.choice( np.shape( Y[region] )[0], size = size, replace = False )
+  xBatch = X[region][Xmask]
+  yBatch = Y[region][Ymask]
   return xBatch, yBatch
 
-def get_loss( model, source, target, region, bSize, nBatches, bayesian = False ):
-  # to-do
+def get_loss( model, source, target, region, bSize, nBatches, bayesian = False, closure = False ):
+  if closure:
+    print( "[START] Evaluating MMD loss closure for {} batches of size {}".format( nBatches, bSize ) )
+  else:
+    print( "[START] Evaluating MMD loss for {} batches of size {}".format( nBatches, bSize ) )
   loss = []
+  loss_closure = { "A": [], "B": [] }
   for i in range( nBatches ):
     sBatch, tBatch = get_batch( source, target, bSize, region )
-    sPred = model( np.asarray( sBatch ), training = bayesian ) # applying prediction when getting the loss
-    loss.append( abcdnn.mix_rbf_mmd2( sPred, tBatch, sigmas = config.params[ "MODEL" ][ "MMD SIGMAS" ], wts = config.params[ "MODEL" ][ "MMD WEIGHTS" ] ) )
+    sPred = model( sBatch.astype( "float32" ), training = bayesian ) # applying prediction when getting the loss
+    if closure:
+      loss_A = abcdnn.mix_rbf_mmd2( tf.constant( sPred[:,0], shape = [ bSize, 1 ] ), tf.constant( tBatch[:,0].astype( "float32" ), shape = [ bSize, 1 ] ), sigmas = config.params[ "MODEL" ][ "MMD SIGMAS" ], wts = config.params[ "MODEL" ][ "MMD WEIGHTS" ] )
+      loss_B = abcdnn.mix_rbf_mmd2( tf.constant( sPred[:,1], shape = [ bSize, 1 ] ), tf.constant( tBatch[:,1].astype( "float32" ), shape = [ bSize, 1 ] ), sigmas = config.params[ "MODEL" ][ "MMD SIGMAS" ], wts = config.params[ "MODEL" ][ "MMD WEIGHTS" ] )
+      if args.verbose: print( "  Batch {:<4}: Loss A = {:.4f}, Loss B = {:.4}".format( str( i + 1 ) + ".", loss_A, loss_B ) )
+      loss_closure[ "A" ].append( loss_A )
+      loss_closure[ "B" ].append( loss_B )
+    iLoss = abcdnn.mix_rbf_mmd2( sPred, tBatch[:,:2].astype( "float32" ), sigmas = config.params[ "MODEL" ][ "MMD SIGMAS" ], wts = config.params[ "MODEL" ][ "MMD WEIGHTS" ] )
+    if args.verbose: print( "  Batch {:<4}: {:.4f}".format( str( i + 1 ) + ".", iLoss ) )
+    loss.append( iLoss )
   lMean = np.mean( loss )
   lStd = np.std( loss )
-  return lMean, lStd
+  if closure: 
+    lMean_A = np.mean( loss_closure[ "A" ] )
+    lMean_B = np.mean( loss_closure[ "B" ] )
+    lStd_A = np.std( loss_closure[ "A" ] )
+    lStd_B = np.std( loss_closure[ "B" ] )
+    print( "[ABCDNN] Closure: {:.4f}%".format( abs( 100. * ( lMean_A - lMean_B ) / lMean ) ) )
+    print( "  + Combined Loss: {:.4f} pm {:.4f}".format( lMean, lStd ) )
+    print( "  + Loss A: {:.4f} pm {:.4f}".format( lMean_A, lStd_A ) )
+    print( "  + Loss B: {:.4f} pm {:.4f}".format( lMean_B, lStd_B ) )
+    return lMean_A, lMean_B, lStd_A, lStd_B
+  else:
+    return lMean, lStd
 
 def extended_ABCD( target ):
   count = {}
@@ -160,7 +186,7 @@ def extended_ABCD( target ):
   print( "[Extended ABCD] Predicted Yield in Signal Region D: {:.2f} pm {:.2f} (stat) pm {:.2f} (syst)".format( pYield, pStat, pSyst ) )
   return pYield, pStat, pSyst
 
-def non_closure( source_data, target_data ):
+def non_closure_eABCD( source_data, target_data ):
   pYield, _, _ = extended_ABCD( target_data )
   oYield = len( target_data["D"] )
   syst = 100. * abs( ( pYield - oYield ) / oYield )
@@ -172,11 +198,14 @@ def main():
   if args.bayesian: print( "[OPTION] Running with dropout on inference for Bayesian Approximation of model uncertainty" )
   with open( os.path.join( "Results/", args.tag + ".json" ), "r" ) as f:
     params = load_json( f.read() )
-  source_data, target_data = prepare_data( args.source, args.target, config.variables, config.regions )
+  source_data, target_data = prepare_data( args.source, args.target, config.variables, config.regions, params )
   NAF = prepare_model( args.tag, params )
-  mean, std = get_loss( NAF, source_data, target_data, args.region, args.size, args.batch, args.bayesian )
+  mean, std = get_loss( NAF, source_data, target_data, args.region, int( args.size ), int( args.batch ), args.bayesian, False )
   if args.closure:
-    _ = non_closure( source_data, target_data )
+    _, _, _, _ = get_loss( NAF, source_data, target_data, args.region, int( args.size ), int( args.batch ), args.bayesian, True )
+    _ = non_closure_eABCD( source_data, target_data )
   if args.stat: 
     _, _, _ = extended_ABCD( target_data )
-  print( "[DONE] MMD Loss in Region {}: {:.3f} pm {:.3f}".format( args.region, mean, std ) )
+  print( "[DONE] MMD Loss in Region {}: {:.5f} pm {:.5f}".format( args.region, mean, std ) )
+
+main()

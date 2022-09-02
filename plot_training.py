@@ -142,11 +142,12 @@ NAF = abcdnn.NAF(
   conddim = params["CONDDIM"],
   activation = params["ACTIVATION"], 
   regularizer = params["REGULARIZER"],
+  initializer = params["INITIALIZER"],
   nodes_cond = params["NODES_COND"],
   hidden_cond = params["HIDDEN_COND"],
   nodes_trans = params["NODES_TRANS"],
   depth = params["DEPTH"],
-  permute = True
+  permute = bool( params["PERMUTE"] )
 )
 NAF.load_weights( os.path.join( folder, args.tag ) )
 
@@ -164,23 +165,29 @@ for i, checkpoint in enumerate( sorted( checkpoints ) ):
     conddim = params["CONDDIM"],
     activation = params["ACTIVATION"], 
     regularizer = params["REGULARIZER"],
+    initializer = params["INITIALIZER"],
     nodes_cond = params["NODES_COND"],
     hidden_cond = params["HIDDEN_COND"],
     nodes_trans = params["NODES_TRANS"],
     depth = params["DEPTH"],
-    permute = True
+    permute = bool( params["PERMUTE"] )
   )
   NAF.load_weights( os.path.join( folder, checkpoint ) )
   
   predictions[ int( epoch ) ] = { region: [] for region in [ "X", "Y", "A", "B", "C", "D" ] }
   for region in predictions[ int( epoch ) ]:
-    NAF_predict = np.asarray( NAF.predict( np.asarray( inputs_nrm_region[ region ] ) ) )
+    NAF_predict = np.asarray( NAF.predict( np.asarray( inputs_nrm_region[ region ] )[::2] ) )
     predictions[ int( epoch ) ][ region ] = NAF_predict * inputsigmas[0:2] + inputmeans[0:2]
-  print( "  + {}: {} = {:.3f} pm {:.3f}, {} = {:.3f} pm {:.3f}".format( 
-    checkpoint, 
-    variables_transform[0], np.mean( predictions[ int( epoch ) ][ "D" ][:,0] ), np.std( predictions[ int( epoch ) ][ "D" ][:,0] ), 
-    variables_transform[1], np.mean( predictions[ int( epoch ) ][ "D" ][:,1] ), np.std( predictions[ int( epoch ) ][ "D" ][:,1] )
-  ) )
+  x1_mean, x1_std = np.mean( predictions[ int( epoch ) ][ "D" ][:,0] ), np.std( predictions[ int( epoch ) ][ "D" ][:,0] )
+  try:
+    x2_mean, x2_std = np.mean( predictions[ int( epoch ) ][ "D" ][:,1] ), np.std( predictions[ int( epoch ) ][ "D" ][:,1] )
+    print( "  + {}: {} = {:.3f} pm {:.3f}, {} = {:.3f} pm {:.3f}".format( 
+      checkpoint, variables_transform[0], x1_mean, x1_std, variables_transform[1], x2_mean, x2_std 
+    ) )
+  except:
+    print( "  + {}: {} = {:.3f} pm {:.3f}".format(
+      checkpoint, variables_transform[0], x1_mean, x1_std 
+    ) )
   del NAF
 
 print( ">> Generating images of plots" )
@@ -191,7 +198,7 @@ region_key = {
   },
   1: {
     0: "A",
-    1: "B" 
+    1: "C" 
   },
   2:{
     0: "B",
@@ -339,7 +346,7 @@ def plot_ratio( ax, variable, x, y, mc_pred, mc_true, data, bins):
 os.system( "mkdir -vp Results/{}".format( args.tag ) )
 print( "Plotting best trained model" )
 for i, variable in enumerate( variables_transform ):
-  bins = np.linspace( config.variables[ variable ][ "LIMIT" ][0], config.variables[ variable ][ "LIMIT" ][1], 31 )
+  bins = np.linspace( config.variables[ variable ][ "LIMIT" ][0], config.variables[ variable ][ "LIMIT" ][1], config.params[ "PLOT" ][ "NBINS" ] )
   fig, axs = plt.subplots( 6, 2, figsize = (9,12), gridspec_kw = { "height_ratios": [3,1,3,1,3,1] } )
   for x in range(6):
     for y in range(2):
@@ -378,7 +385,7 @@ print( "Plotting models per epoch:" )
 for epoch in sorted( predictions.keys() ):
   print( "  + Generating image for epoch {}".format( epoch ) )
   for i, variable in enumerate( variables_transform ): 
-    bins = np.linspace( config.variables[ variable ][ "LIMIT" ][0], config.variables[ variable ][ "LIMIT" ][1], 31 )
+    bins = np.linspace( config.variables[ variable ][ "LIMIT" ][0], config.variables[ variable ][ "LIMIT" ][1], config.params[ "PLOT" ][ "NBINS" ] )
     fig, axs = plt.subplots( 6, 2, figsize = (9,12), gridspec_kw = { "height_ratios": [3,1,3,1,3,1] } )
     for x in range( 6 ):
       for y in range( 2 ):
@@ -414,7 +421,9 @@ for epoch in sorted( predictions.keys() ):
     plt.savefig( "Results/{}/{}_{}_EPOCH{}.png".format( args.tag, args.tag, variable, epoch ) )
     images[ variable ].append( imageio.imread( "Results/{}/{}_{}_EPOCH{}.png".format( args.tag, args.tag, variable, epoch ) ) )
     plt.close()
-
-print( "[DONE] {} training GIF completed: {}_{}.gif, {}_{}.gif".format( args.tag, args.tag, variables_transform[0], args.tag, variables_transform[1] ) )
+try:
+  print( "[DONE] {} training GIF completed: {}_{}.gif, {}_{}.gif".format( args.tag, args.tag, variables_transform[0], args.tag, variables_transform[1] ) )
+except:
+  print( "[DONE] {} training GIF completed: {}_{}.gif".format( args.tag, args.tag, variables_transform[0] ) )
 for variable in variables_transform:
   imageio.mimsave( "Results/{}_{}.gif".format( args.tag, variable ), images[ variable ], duration = 1 )
