@@ -37,7 +37,7 @@ variables = {
   "NJets_JetSubCalc": {
     "CATEGORICAL": True,
     "TRANSFORM": False,
-    "LIMIT": [5,6],
+    "LIMIT": [4,5],
     "LATEX": "N_j"
   },
 }
@@ -65,9 +65,9 @@ regions = {
   "Y": {
     "VARIABLE": "NJets_JetSubCalc",
     "INCLUSIVE": True,
-    "MIN": 5,
-    "MAX": 6,
-    "SIGNAL": 6
+    "MIN": 4,
+    "MAX": 5,
+    "SIGNAL": 5
   }
 }
 
@@ -77,20 +77,20 @@ params = {
   },
   "MODEL": { # parameters for setting up the NAF model
     "NODES_COND": 50,
-    "HIDDEN_COND": 2,
-    "NODES_TRANS": 8,
+    "HIDDEN_COND": 3,
+    "NODES_TRANS": 10,
     "LRATE": 5e-3,
-    "DECAY": 1,
-    "GAP": 200,
-    "DEPTH": 2,
+    "DECAY": 0.1,
+    "GAP": 1000,
+    "DEPTH": 1,
     "REGULARIZER": "ALL", # DROPOUT, BATCHNORM, ALL, NONE
-    "INITIALIZER": "he_normal", # he_normal, RandomNormal
-    "ACTIVATION": "relu",
+    "INITIALIZER": "RandomNormal", # he_normal, RandomNormal
+    "ACTIVATION": "softplus",
     "BETA1": 0.9,
     "BETA2": 0.999,
     "MMD SIGMAS": [1.0],
     "MMD WEIGHTS": None,
-    "MINIBATCH": 2**11,
+    "MINIBATCH": 2**12,
     "RETRAIN": True,
     "PERMUTE": False,
     "SEED": 101, # this can be overridden when running train_abcdnn.py
@@ -98,9 +98,9 @@ params = {
     "VERBOSE": False  
   },
   "TRAIN": {
-    "EPOCHS": 500,
-    "PATIENCE": 500,
-    "MONITOR": 25,
+    "EPOCHS": 2000,
+    "PATIENCE": 2000,
+    "MONITOR": 200,
     "MONITOR THRESHOLD": 0,  # only save model past this epoch
     "PERIODIC SAVE": True,  # saves model at each epoch step according to "MONITOR" 
     "SHOWLOSS": True,

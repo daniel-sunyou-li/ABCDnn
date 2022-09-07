@@ -321,11 +321,13 @@ def prepdata( rSource, rTarget, variables, regions, mc_weight = None ):
   
 # construct the ABCDnn model here
 class ABCDnn(object):
-  def __init__( self, inputdim_categorical_list, inputdim, nodes_cond, hidden_cond,
+  def __init__( self, variables, regions,inputdim_categorical_list, inputdim, nodes_cond, hidden_cond,
                nodes_trans, minibatch, activation, regularizer, initializer,
                depth, lr, gap, conddim, beta1, beta2, mmd_sigmas, mmd_weights, decay,
                retrain, savedir, savefile, disc_tag, 
                seed, permute, verbose, model_tag ):
+    self.variables = variables
+    self.regions = regions
     self.inputdim_categorical_list = inputdim_categorical_list
     self.inputdim = inputdim
     self.inputdimcat = int( np.sum( inputdim_categorical_list ) )
@@ -462,7 +464,10 @@ class ABCDnn(object):
       "TRANSFER": transfer,
       "TRANSFER ERR": transfer_err,
       "INPUTMEANS": means_list,
-      "INPUTSIGMAS": sigmas_list
+      "INPUTSIGMAS": sigmas_list,
+      "VARIABLES": self.variables,
+      "REGIONS": self.regions,
+      "EPOCHS": self.steps
     }
     
     with open( os.path.join( self.savedir, "{}.json".format( self.model_tag ) ), "w" ) as f:
@@ -576,6 +581,7 @@ class ABCDnn(object):
     impatience = 0      # don't edit
     stop_train = False  # don't edit
     self.minepoch = 0
+    self.steps = steps
     save_counter = 0    # edit so you aren't saving every time the model improves --> takes too much time
     for i in range( steps ):
       source, target, batchweight = self.get_next_batch()
@@ -756,6 +762,8 @@ class ABCDnn_training(object):
     self.model_tag = model_tag
 
     self.model = ABCDnn( 
+      variables = self.variables,
+      regions = self.regions,
       inputdim_categorical_list = self.ncat_per_feature, 
       inputdim = self.inputdim,
       conddim = self.conddim,
