@@ -8,19 +8,19 @@ To run the notebook on the LPC (works on CMSSW_9_4_6_patch1 and CMSSW_10_6_29):
 		source /cvmfs/sft.cern.ch/lcg/views/LCG_98/x86_64-centos7-gcc8-opt/setup.csh
     
 2. Second, edit the settings in `config.py`:
-> * `eosUserName` -- Edit this based on your username
-> * `postfix` -- Used in `sampleDir`
-> * `sourceDir` -- Edit the paths to your relevant files on LPC or BRUX
-> * `sampleDir` -- Edit this for the directory containing ROOT files
-> * `variables` -- Edit this to define your two transformed variables and two control variables (branch names in ROOT file)
-> * `selection` -- Edit this for event selection, applied in `format_ntuples.py`
-> * `regions` -- Edit this to define the control region boundaries for each training instance, the minimum and maximum boundaries must match the limits in `variables` for encoding to work
-> * `params` -- Edit the model architecture you want and training settings
->> * `EPOCHS` -- Number of training instances, recommended to test `1000` first
->> * `MONITOR` -- Steps between each epoch to report (and save) models, recommended to save only 20 models
->> * `MONITOR THRESHOLD` -- Only monitor events after this epoch number
-> * `samples_input` -- Edit the name of ROOT files to format into a single pickle file used in training
-> * `samples_apply` -- Should match `samples_input`, but can specify additional files, such as QCD
+* `eosUserName` -- Edit this based on your username
+* `postfix` -- Used in `sampleDir`
+* `sourceDir` -- Edit the paths to your relevant files on LPC or BRUX
+* `sampleDir` -- Edit this for the directory containing ROOT files
+* `variables` -- Edit this to define your two transformed variables and two control variables (branch names in ROOT file)
+* `selection` -- Edit this for event selection, applied in `format_ntuples.py`
+* `regions` -- Edit this to define the control region boundaries for each training instance, the minimum and maximum boundaries must match the limits in `variables` for encoding to work
+* `params` -- Edit the model architecture you want and training settings
+> * `EPOCHS` -- Number of training instances, recommended to test `1000` first
+> * `MONITOR` -- Steps between each epoch to report (and save) models, recommended to save only 20 models
+> * `MONITOR THRESHOLD` -- Only monitor events after this epoch number
+* `samples_input` -- Edit the name of ROOT files to format into a single pickle file used in training
+* `samples_apply` -- Should match `samples_input`, but can specify additional files, such as QCD
 
 3. Create your dataset using `format_ntuple.py`, showing example for 2017 as an example,
 
