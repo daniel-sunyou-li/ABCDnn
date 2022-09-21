@@ -35,9 +35,9 @@ if args.JECup and args.JECdown:
 
 dLocal = "samples_ABCDNN_UL{}".format( args.year )
 
-if args.JECup: dLocal + "/JECup" 
-elif args.JECdown: dLocal + "/JECdown" 
-else: dLocal +  "/nominal"
+if args.JECup: dLocal += "/JECup" 
+elif args.JECdown: dLocal += "/JECdown" 
+else: dLocal +=  "/nominal"
 
 closure_checkpoints = []
 if args.closure is not None: closure_checkpoints = args.closure
@@ -108,8 +108,8 @@ for checkpoint in args.checkpoints:
 # populate the step 3
 def fill_tree( sample, dLocal ):
   sampleDir = config.sampleDir[ args.year ]
-  if args.JECdown: sampleDir.replace( "nominal", "JECdown" )
-  elif args.JECup: sampleDir.replace( "nominal", "JECup" )
+  if args.JECdown: sampleDir = sampleDir.replace( "nominal", "JECdown" )
+  elif args.JECup: sampleDir = sampleDir.replace( "nominal", "JECup" )
   if args.storage == "EOS":
     try: 
       samples_done = subprocess.check_output( "eos root://cmseos.fnal.gov ls /store/user/{}/{}".format( config.eosUserName, sampleDir.replace( "step3", "step3_ABCDnn" ) ), shell = True ).split( "\n" )[:-1]
@@ -161,10 +161,10 @@ def fill_tree( sample, dLocal ):
       "transfer_{}".format( disc_tags[ checkpoint ] ): rTree_out.Branch( "transfer_{}".format( disc_tags[ checkpoint ] ), arrays[ checkpoint ][ "transfer_{}".format( disc_tags[ checkpoint ] ) ], "transfer_{}/F".format( disc_tags[ checkpoint ] ) ),
     }
     print( "  + transfer_{}".format( disc_tags[ checkpoint ] ) )
-    for variable in variables_transform:
+    for variable in variables_transform[ checkpoint ]:
       arrays[ checkpoint ][ variable ] = array( "f", [0.] )
       branches[ checkpoint ][ variable ] = rTree_out.Branch( "{}_{}".format( str( variable ), disc_tags[ checkpoint ] ) , arrays[ checkpoint ][ variable ], "{}_{}/F".format( str( variable ), disc_tags[ checkpoint ] ) );
-      if checkpoint in closure:
+      if checkpoint in closure and "MODELUP" not in variable and "MODELDN" not in variable and "transfer" not in variable:
         arrays[ checkpoint ][ variable + "_CLOSUREUP" ] = array( "f", [0.] )
         branches[ checkpoint ][ variable + "_CLOSUREUP" ] = rTree_out.Branch( "{}_{}_CLOSUREUP".format( str( variable ), disc_tags[ checkpoint ] ), arrays[ checkpoint ][ variable + "_CLOSUREUP" ], "{}_{}_CLOSUREUP/F".format( str( variable ), disc_tags[ checkpoint ] ) );
         arrays[ checkpoint ][ variable + "_CLOSUREDN" ] = array( "f", [0.] )
@@ -178,9 +178,9 @@ def fill_tree( sample, dLocal ):
     rTree_in.GetEntry(i)
     for checkpoint in args.checkpoints:
       arrays[ checkpoint ][ "transfer_{}".format( disc_tags[ checkpoint ] ) ][0] = transfers[ checkpoint ]
-      for j, variable in enumerate( variables_transform ):
+      for j, variable in enumerate( variables_transform[ checkpoint ] ):
         arrays[ checkpoint ][ variable ][0] = predictions[ checkpoint ][i][j]
-        if checkpoint in closure:
+        if checkpoint in closure and "MODELUP" not in variable and "MODELDN" not in variable and "transfer" not in variable:
           arrays[ checkpoint ][ variable + "_CLOSUREUP" ][0] = ( 1. + closure[ checkpoint ] ) * predictions[ checkpoint ][i][j]
           arrays[ checkpoint ][ variable + "_CLOSUREDN" ][0] = ( 1. - closure[ checkpoint ] ) * predictions[ checkpoint ][i][j]
     rTree_out.Fill()
@@ -190,7 +190,7 @@ def fill_tree( sample, dLocal ):
   rFile_out.Close()
   if args.storage == "EOS":
     os.system( "xrdcp -vp {} {}".format( os.path.join( dLocal, sample.split( "/" )[-1].replace( "hadd", "ABCDnn_hadd" ) ), os.path.join( config.sourceDir[ "CONDOR" ], sampleDir.replace( "step3", "step3_ABCDnn" ) ) ) )
-    os.system( "rm {}".format( sample.split( "/" )[-1].replace( "hadd", "ABCDnn_hadd" ) ) )
+    os.system( "rm {}".format( os.path.join( dLocal, sample.split( "/" )[-1].replace( "hadd", "ABCDnn_hadd" ) ) ) )
   del rTree_in, rFile_in, rTree_out, rFile_out
 
 if args.test:

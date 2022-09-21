@@ -176,7 +176,7 @@ for i, checkpoint in enumerate( sorted( checkpoints ) ):
   
   predictions[ int( epoch ) ] = { region: [] for region in [ "X", "Y", "A", "B", "C", "D" ] }
   for region in predictions[ int( epoch ) ]:
-    NAF_predict = np.asarray( NAF.predict( np.asarray( inputs_nrm_region[ region ] )[::20] ) )
+    NAF_predict = np.asarray( NAF.predict( np.asarray( inputs_nrm_region[ region ] )[::3] ) )
     predictions[ int( epoch ) ][ region ] = NAF_predict * inputsigmas[0:2] + inputmeans[0:2]
   x1_mean, x1_std = np.mean( predictions[ int( epoch ) ][ "D" ][:,0] ), np.std( predictions[ int( epoch ) ][ "D" ][:,0] )
   try:
