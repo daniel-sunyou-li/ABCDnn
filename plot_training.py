@@ -129,10 +129,12 @@ encoder = {}
 inputs_nrm_region = {}
 inputmeans = np.hstack( [ float( mean ) for mean in params[ "INPUTMEANS" ] ] )
 inputsigmas = np.hstack( [ float( sigma ) for sigma in params[ "INPUTSIGMAS" ] ] )
+
 for region in inputs_src_region:
   encoder[region] = abcdnn.OneHotEncoder_int( categorical, lowerlimit = lowerlimit, upperlimit = upperlimit )
   inputs_enc_region[ region ] = encoder[region].encode( inputs_src_region[ region ].to_numpy( dtype = np.float32 ) )
   inputs_nrm_region[ region ] = ( inputs_enc_region[ region ] - inputmeans ) / inputsigmas
+
 
 print( ">> Processing checkpoints" )
 predictions = {}
@@ -154,6 +156,7 @@ NAF.load_weights( os.path.join( folder, args.tag ) )
 for region in tqdm.tqdm( predictions_best ):
   NAF_predict = np.asarray( NAF.predict( np.asarray( inputs_nrm_region[ region ] ) ) )
   predictions_best[ region ] = NAF_predict * inputsigmas[0:2] + inputmeans[0:2] 
+ 
   
 del NAF
 
@@ -176,7 +179,7 @@ for i, checkpoint in enumerate( sorted( checkpoints ) ):
   
   predictions[ int( epoch ) ] = { region: [] for region in [ "X", "Y", "A", "B", "C", "D" ] }
   for region in predictions[ int( epoch ) ]:
-    NAF_predict = np.asarray( NAF.predict( np.asarray( inputs_nrm_region[ region ] )[::3] ) )
+    NAF_predict = np.asarray( NAF.predict( np.asarray( inputs_nrm_region[ region ] )[::2] ) )
     predictions[ int( epoch ) ][ region ] = NAF_predict * inputsigmas[0:2] + inputmeans[0:2]
   x1_mean, x1_std = np.mean( predictions[ int( epoch ) ][ "D" ][:,0] ), np.std( predictions[ int( epoch ) ][ "D" ][:,0] )
   try:
@@ -212,22 +215,22 @@ def ratio_err( x, xerr, y, yerr ):
 
 def plot_hist( ax, variable, x, y, epoch, mc_pred, mc_true, data, bins ):
   mc_pred_hist = { 
-    "TRUE": np.histogram( mc_pred, bins = bins, density = False ),
-    "NORM": np.histogram( mc_pred, bins = bins, density = True )
+    "TRUE": np.nan_to_num( np.histogram( mc_pred, bins = bins, density = False ) ),
+    "NORM": np.nan_to_num( np.histogram( mc_pred, bins = bins, density = True ) )
   }
-  mc_pred_scale = mc_pred_hist[ "TRUE" ][0] / mc_pred_hist[ "NORM" ][0]
+  mc_pred_scale = np.nan_to_num( mc_pred_hist[ "TRUE" ][0] / mc_pred_hist[ "NORM" ][0] )
   
   mc_true_hist = {
-    "TRUE": np.histogram( mc_true, bins = bins, density = False ),
-    "NORM": np.histogram( mc_true, bins = bins, density = True )
+    "TRUE": np.nan_to_num( np.histogram( mc_true, bins = bins, density = False ) ),
+    "NORM": np.nan_to_num( np.histogram( mc_true, bins = bins, density = True ) )
   }
-  mc_true_scale = mc_true_hist[ "TRUE" ][0] / mc_true_hist[ "NORM" ][0]
+  mc_true_scale = np.nan_to_num( mc_true_hist[ "TRUE" ][0] / mc_true_hist[ "NORM" ][0] )
 
   data_hist = {
-    "TRUE": np.histogram( data, bins = bins, density = False ),
-    "NORM": np.histogram( data, bins = bins, density = True )
+    "TRUE": np.nan_to_num( np.histogram( data, bins = bins, density = False ) ),
+    "NORM": np.nan_to_num( np.histogram( data, bins = bins, density = True ) )
   }
-  data_scale = data_hist[ "TRUE" ][0] / data_hist[ "NORM" ][0]
+  data_scale = np.nan_to_num( data_hist[ "TRUE" ][0] / data_hist[ "NORM" ][0] )
   
   # plot the data first
   ax.errorbar(
@@ -261,6 +264,7 @@ def plot_hist( ax, variable, x, y, epoch, mc_pred, mc_true, data, bins ):
   ax.set_xlim( config.variables[ variable ][ "LIMIT" ][0], config.variables[ variable ][ "LIMIT" ][1] )
   y_max = max( [ max( data_hist[ "NORM" ][0] ), max( mc_true_hist[ "NORM" ][0] ) ] )
   ax.set_ylim( 0, 1.3 * y_max )
+  ax.set_yscale( config.params[ "PLOT" ][ "YSCALE" ] )
   ax.axes.yaxis.set_visible(False)
   ax.axes.xaxis.set_visible(False)
 

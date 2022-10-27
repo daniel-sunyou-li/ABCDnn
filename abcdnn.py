@@ -316,7 +316,7 @@ def prepdata( rSource, rTarget, variables, regions, mc_weight = None ):
   normedinputs_data = ( inputrawdata_enc - inputmeans ) / inputsigma        # normed Data
   normedinputs_mc = ( inputsmc_enc - inputmeans ) / inputsigma              # normed MC  
   
-  return inputrawdata, inputrawmc, inputrawmcweight, normedinputs_data, normedinputs_mc, inputmeans, inputsigma, ncat_per_feature
+  return inputrawdata, inputrawmc, inputrawmcweight, normedinputs_data, normedinputs_mc, inputmeans, inputsigma, vNames, ncat_per_feature
   
   
 # construct the ABCDnn model here
@@ -438,11 +438,12 @@ class ABCDnn(object):
     self.categoricals_mc, self.categorical_mc_indices_grouped = self.category_sorted( self.mcnumpydata, verbose )
     pass
 
-  def savehyperparameters(self, transfer, transfer_err, means, sigmas ):
+  def savehyperparameters(self, transfer, transfer_err, inputs, means, sigmas ):
     """Write hyper parameters into file
     """
     means_list = [ str( mean ) for mean in means[0] ]
     sigmas_list = [ str( sigma ) for sigma in sigmas[0] ]
+    inputs_list = [ input_ for input_ in inputs ]
     params = {
       "INPUTDIM": self.inputdim,
       "CONDDIM": self.conddim,
@@ -463,6 +464,7 @@ class ABCDnn(object):
       "DISC TAG": self.disc_tag,
       "TRANSFER": transfer,
       "TRANSFER ERR": transfer_err,
+      "INPUTS": inputs_list,
       "INPUTMEANS": means_list,
       "INPUTSIGMAS": sigmas_list,
       "VARIABLES": self.variables,
@@ -472,7 +474,6 @@ class ABCDnn(object):
     
     with open( os.path.join( self.savedir, "{}.json".format( self.model_tag ) ), "w" ) as f:
       f.write( write_json( params, indent = 2 ) )
-    #pickle.dump( params, open( os.path.join( self.savedir, "hyperparams.pkl" ), "wb" ) )
 
   def monitor( self, step, glossv_trn, mmdloss_trn ):
     self.monitor_record.append( [ 
@@ -577,18 +578,20 @@ class ABCDnn(object):
 
   def train( self, steps = 10000, monitor = 1000, patience = 100, early_stopping = True, monitor_threshold = 0, hpo = False, periodic_save = False ):
     # need to update this to use a validation set
-    print( "{:<5} / {:<8} / {:<8} / {:<6} / {:<10} / {:<10} / {:<10}".format( "Epoch", "MMD", "Min MMD", "Region", "DNN %", "HT %", "L Rate" ) ) 
+    print( "{:<5} / {:<8} / {:<8} / {:<8} / {:<6} / {:<10} / {:<10} / {:<10}".format( "Epoch", "MMD", "Min MMD", "Avg MMD", "Region", "DNN %", "HT %", "L Rate" ) ) 
     impatience = 0      # don't edit
     stop_train = False  # don't edit
     self.minepoch = 0
     self.steps = steps
     save_counter = 0    # edit so you aren't saving every time the model improves --> takes too much time
+    losses = []
     for i in range( steps ):
       source, target, batchweight = self.get_next_batch()
       # train the model on this batch
       glossv, mmdloss  = self.train_step( source, target, batchweight )
       # currently not using glossv because mmdloss is a scalar and glossv is the mean of mmdloss
       # generator update
+      losses.append( mmdloss )
       if i == 0: self.minloss = mmdloss
       # early stopping on validation implementation
       else: 
@@ -621,10 +624,11 @@ class ABCDnn(object):
         except:
           x2_MC = 1
           x2_data = 1
-        print( "{:<5}   {:<8.1e}   {:<8.1e}   {:<6}   {:<10.1f}   {:<10.1f}   {:<10.2e}".format( 
+        print( "{:<5}   {:<8.1e}   {:<8.1e}   {:<8.1e}   {:<6}   {:<10.1f}   {:<10.1f}   {:<10.2e}".format( 
           self.checkpoint.global_step.numpy(),
           mmdloss.numpy(),
           self.minloss,
+          np.mean( losses[-monitor:] ),
           category_,
           abs( 100. * ( x1_MC - x1_data ) / x1_data ),
           abs( 100. * ( x2_MC - x2_data ) / x2_data ),
@@ -683,7 +687,7 @@ class ABCDnn_training(object):
     self.mc_weight = mc_weight    # (str) use xsec weights
 
     rawinputs, rawinputsmc, rawmcweight, normedinputs, normedinputsmc, inputmeans, \
-      inputsigma, ncat_per_feature = prepdata( rSource, rTarget, 
+      inputsigma, inputnames, ncat_per_feature = prepdata( rSource, rTarget, 
       variables, regions, mc_weight )
 
     self.rawinputs = rawinputs                # unnormalized data tree after event selection
@@ -691,6 +695,7 @@ class ABCDnn_training(object):
     self.rawmcweight = rawmcweight            # xsec weighted mc tree after event selection
     self.normedinputs = normedinputs          # normalized data tree after event selection
     self.normedinputsmc = normedinputsmc      # normalized mc tree after event selection
+    self.inputs = inputnames                  # name of inputs
     self.inputmeans = inputmeans              # mean of unnormalized data
     self.inputsigma = inputsigma              # rms of unnormalized data
 
@@ -924,6 +929,6 @@ class ABCDnn_training(object):
       self.transfer_err
     ) )
     print( ">> Saving hyper parameters" )
-    self.model.savehyperparameters( self.transfer, self.transfer_err, self.inputmeans, self.inputsigma )
+    self.model.savehyperparameters( self.transfer, self.transfer_err, self.inputs, self.inputmeans, self.inputsigma )
     pass
 

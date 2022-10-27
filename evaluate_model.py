@@ -42,8 +42,8 @@ def prepare_data( fSource, fTarget, cVariables, cRegions, params ):
   sTree = sFile[ "Events" ]
   tTree = tFile[ "Events" ]
   
-  variables = [ str( key ) for key in list( cVariables.keys() ) if cVariables[key]["TRANSFORM"] ]
-  variables_transform = [ str( key ) for key in list( cVariables.keys() ) if cVariables[key]["TRANSFORM"] ]
+  variables = [ str( key ) for key in sorted( cVariables.keys() ) if cVariables[key]["TRANSFORM"] ]
+  variables_transform = [ str( key ) for key in sorted( cVariables.keys() ) if cVariables[key]["TRANSFORM"] ]
   if cRegions["Y"]["VARIABLE"] in cVariables and cRegions["X"]["VARIABLE"] in cVariables:
     variables.append( cRegions["Y"]["VARIABLE"] )
     variables.append( cRegions["X"]["VARIABLE"] )

@@ -1,5 +1,5 @@
 # apply a trained ABCDnn model to ttbar samples and create new step3's
-# last updated 10/25/2021 by Daniel Li
+# last updated 10/20/2022 by Daniel Li
 
 import glob, os, sys, subprocess
 import config
@@ -10,27 +10,36 @@ from argparse import ArgumentParser
 # read in arguments
 parser = ArgumentParser()
 parser.add_argument( "-y", "--year", required = True, default = "2017" )
-parser.add_argument( "-t", "--test", action = "store_true" )
-parser.add_argument( "-l", "--log", default= "application_log_" + datetime.now().strftime("%d.%b.%Y") )
-parser.add_argument( "-r", "--resubmit", action = "store_true" )
 parser.add_argument( "-c", "--checkpoints", nargs = "+", required = True, help = "Trained weight tag(s)" )
-parser.add_argument( "-loc", "--location", default = "LPC", help = "LPC,BRUX" )
+parser.add_argument( "--closure", nargs = "+" )
+parser.add_argument( "--test", action = "store_true" )
+parser.add_argument( "--JECup", action = "store_true" )
+parser.add_argument( "--JECdown", action = "store_true" )
+parser.add_argument( "-s", "--dSource", default = "LPC", help = "Step3 source location: LPC,BRUX" )
+parser.add_argument( "-l", "--dTarget", default = "LPC", help = "ABCDnn target location: LPC,BRUX" )
+parser.add_argument( "--log", default= "application_log_" + datetime.now().strftime("%d.%b.%Y") )
+parser.add_argument( "--resubmit", action = "store_true" )
 args = parser.parse_args()
 
 # check if folder has necessary components
 
-# paths 
-condorDir    = config.sourceDir[ "CONDOR" ]
-step3Samples = { "nominal": [] }
+tags = [ "nominal" ]
+if args.JECup: tags + [ "JECup" ]
+if args.JECdown: tags + [ "JECdown" ]
+
+step3Samples = { tag: [] for tag in tags }
 
 # determine which samples to run on
 if args.test: print( ">> Running in test mode..." )
 
-if args.location == "LPC":
+if args.dSource == "LPC":
   sourceDir = config.sourceDir[ "LPC" ]
-elif args.location == "BRUX":
+elif args.dSource == "BRUX":
   sourceDir = config.sourceDir[ "BRUX" ]
-
+if args.dTarget == "LPC":
+  targetDir = config.targetDir[ "LPC" ]
+elif args.dTarget == "BRUX":
+  targetDir = config.targetDir[ "BRUX" ]
 
 print( ">> Running checkpoints: " )
 all_checkpoints = [ checkpoint.split( "." )[0] for checkpoint in os.listdir( "Results/" ) if ".data" in checkpoint ]
@@ -44,20 +53,20 @@ for checkpoint in args.checkpoints:
     
 if args.resubmit: 
   print( "[OPT] Running in resubmit mode." )
-  print( ">> Resubmitting ABCDnn to samples:" )
+  print( ">> Resubmitting ABCDnn jobs" )
   doneSamples = {
-    tag: [ sample for sample in subprocess.check_output( "eos root://cmseos.fnal.gov ls /store/user/{}/{}/{}/".format( config.eosUserName, config.sampleDir[ args.year ], tag ), shell = True ).split( "\n" )[:-1] if "ABCDNN" in sample.upper() ] for tag in [ "nominal" ]
+    tag: [ sample for sample in subprocess.check_output( "eos root://cmseos.fnal.gov ls {}".format( os.path.join( targetDir, config.sampleDir[ args.year ], tag ) ), shell = True ).split( "\n" )[:-1] ] for tag in tags
   }
-  for sample in config.samples_apply[ args.year ]:
-    if sample.replace( "hadd", "ABCDnn_hadd" ) not in doneSamples[ "nominal" ]: 
-      step3Samples[ "nominal" ].append( sample )
+  for tag in tags:
+    for sample in config.samples_apply[ args.year ]:
+      if sample.replace( "hadd", "ABCDnn_hadd" ) not in doneSamples[ tag ]: 
+        step3Samples[ tag ].append( sample )
 else: 
   print( "[OPT] Running in submit mode." )
-  print( ">> Applying ABCDnn to samples:" )
-  step3Samples[ "nominal" ] = [ config.samples_apply[ args.year ][0] ] if args.test else config.samples_apply[ args.year ]
-
-for sample in step3Samples[ "nominal" ]:
-  print( "  + {}".format( sample ) )
+  print( ">> Submitting ABCDnn jobs" )
+  for tag in tags:
+    step3Samples[ tag ] = [ config.samples_apply[ args.year ][0] ] if args.test else config.samples_apply[ args.year ] 
+    print( "  + {}: {} jobs".format( tag, len( step3Samples[ tag ] ) ) )
 
 # general methods
 def check_voms():
@@ -89,26 +98,30 @@ def create_tar():
       "ABCDnn/Results/*",
       "ABCDnn/*log*/*",
       "*.tgz",
-      "CMSSW_10_6_19/"
+      "CMSSW_10_6_29/"
     )
   )
   print( ">> Transferring ABCDnn.tgz to EOS" )
   os.system( "xrdcp -f ABCDnn.tgz root://cmseos.fnal.gov//store/user/{}".format( config.eosUserName ) )
 
-def condor_job( fileName, condorDir, sampleDir, logDir, checkpoints, tag ):
+def condor_job( fileName, condorDir, sampleDir, logDir, checkpoints, closure, tag ):
   request_memory = "5120" 
   if "tttosemilepton" in fileName.lower() and "ttjj" in fileName.lower(): request_memory = "10240" 
   if args.resubmit != None: request_memory = "16384"
   dict = {
+    "YEAR"          : args.year,
     "SAMPLENAMEIN"  : fileName,
     "SAMPLENAMEOUT" : fileName.replace( "hadd", "ABCDnn_hadd" ),
+    "SOURCEDIR"     : args.dSource,
+    "TARGETDIR"     : args.dTarget,
     "CONDORDIR"     : condorDir,           
     "SAMPLEDIR"     : sampleDir,   
     "TAG"           : tag,
-    "CHECKPOINTS"   : checkpoints,
+    "CHECKPOINTS"   : ",".join( checkpoints ),
     "CKP_JSON"      : ", ".join( [ "Results/" + checkpoint + ".json" for checkpoint in checkpoints ] ), 
     "CKP_INDEX"     : ",  ".join( [ "Results/" + checkpoint + ".index" for checkpoint in checkpoints ] ), 
     "CKP_DATA"      : ",  ".join( [ "Results/" + checkpoint + ".data-00000-of-00001" for checkpoint in checkpoints ] ),
+    "CLOSURE"       : ",".join( closure ),
     "LOGDIR"        : logDir,              
     "MEMORY"        : request_memory
   }
@@ -116,35 +129,36 @@ def condor_job( fileName, condorDir, sampleDir, logDir, checkpoints, tag ):
   jdf = open( jdfName, "w" )
   jdf.write(
 """universe = vanilla
-Executable = apply_abcdnn.sh
+Executable = condor_abcdnn.sh
 Should_Transfer_Files = Yes
-Transfer_Input_Files = %(CKP_JSON)s, %(CKP_INDEX)s, %(CKP_DATA)s
+Transfer_Input_Files = %(CKP_JSON)s, %(CKP_INDEX)s, %(CKP_DATA)s, abcdnn.py, apply_abcdnn.py, config.py
 WhenToTransferOutput = ON_EXIT
 request_memory = %(MEMORY)s
 Output = %(LOGDIR)s/%(SAMPLENAMEOUT)s_%(TAG)s.out
 Error = %(LOGDIR)s/%(SAMPLENAMEOUT)s_%(TAG)s.err
 Log = %(LOGDIR)s/%(SAMPLENAMEOUT)s_%(TAG)s.log
 Notification = Never
-Arguments = %(CONDORDIR)s %(SAMPLENAMEIN)s %(SAMPLENAMEOUT)s %(SAMPLEDIR)s %(CHECKPOINTS)s
+Arguments = %(CONDORDIR)s %(SOURCEDIR)s %(TARGETDIR)s %(SAMPLEDIR)s %(SAMPLENAMEIN)s %(SAMPLENAMEOUT)s %(CHECKPOINTS)s %(CLOSURE)s %(TAG)s %(YEAR)s
 Queue 1"""%dict
   )
   jdf.close()
   os.system( "condor_submit {}".format( jdfName ) )
 
-def submit_jobs( files, key, checkpoints, condorDir, logDir, sampleDir ):
+def submit_jobs( files, tag, checkpoints, closure, condorDir, logDir, sampleDir ):
   os.system( "mkdir -vp " + logDir )
   jobCount = 0
-  print( "[START] Submitting {} Condor jobs: ".format( key ) )
-  for file in files[key]:
+  print( "[START] Submitting {} Condor jobs: ".format( tag ) )
+  for file in files[tag]:
     print( "  + {}".format( file ) )
-    condor_job( file.split(".")[0], condorDir, sampleDir, logDir, checkpoints, key )
+    condor_job( file.split(".")[0], condorDir, sampleDir, logDir, checkpoints, closure, tag )
     jobCount += 1
   print( "[DONE] {} jobs submitted.".format( jobCount ) )
   return jobCount
 
 def main( files ):
-  create_tar()
-  count = submit_jobs( files, "nominal", args.checkpoints, condorDir, args.log, os.path.join( config.sourceDir[ args.location ], config.sampleDir[ args.year ] ) )
+  #create_tar()
+  for tag in files:
+    count = submit_jobs( files, tag, args.checkpoints, args.closure, config.condorDir, args.log, os.path.join( config.targetDir[ args.dSource ], config.sampleDir[ args.year ] ) )
 
 voms_init()
 main( step3Samples )

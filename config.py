@@ -5,9 +5,16 @@ data_path = os.path.join( os.getcwd() )
 results_path = os.path.join( os.getcwd(), "Results" )
 eosUserName = "dali"
 postfix = "3t"
+
+condorDir = "root://cmseos.fnal.gov//store/user/{}/".format( eosUserName ) 
+
 sourceDir = {
-  "CONDOR": "root://cmseos.fnal.gov//store/user/{}/".format( eosUserName ),
-  "LPC": "root://cmsxrootd.fnal.gov//store/user/{}/".format( eosUserName ),
+  "LPC": "root://cmseos.fnal.gov//store/group/{}/".format( "lpcljm" ),
+  "BRUX": "root://brux30.hep.brown.edu:1094//store/user/{}/".format( eosUserName )
+}
+
+targetDir = {
+  "LPC": "root://cmseos.fnal.gov//store/group/lpcljm/",
   "BRUX": "root://brux30.hep.brown.edu:1094//store/user/{}/".format( eosUserName )
 }
 
@@ -16,12 +23,24 @@ sampleDir = {
 }
 
 variables = {
-  "AK4HT": {
+  "thirdcsvb_bb": {
     "CATEGORICAL": False,
     "TRANSFORM": True,
-    "LIMIT": [0.,3000.],
-    "LATEX": "H_T\ \mathrm{(GeV)}"
+    "LIMIT": [0.,1.],
+    "LATEX": "DeepJet\ 3"
   },
+  #"minDR_lepBJet": {
+  #  "CATEGORICAL": False,
+  #  "TRANSFORM": True,
+  #  "LIMIT": [0.,5.],
+  #  "LATEX": "DNN"
+  #},
+  #"AK4HT": {
+  #  "CATEGORICAL": False,
+  #  "TRANSFORM": True,
+  #  "LIMIT": [0.,3000.],
+  #  "LATEX": "H_T\ (GeV)"
+  #},
   "DNN_1to40_3t": {
     "CATEGORICAL": False,
     "TRANSFORM": True,
@@ -51,6 +70,7 @@ selection = { # edit these accordingly
   "AK4HT": { "VALUE": [ 350. ], "CONDITION": [ ">" ] },
   "DataPastTriggerX": { "VALUE": [ 1 ], "CONDITION": [ "==" ] },
   "MCPastTriggerX": { "VALUE": [ 1 ], "CONDITION": [ "==" ] },
+  #"DNN_1to40_3t": { "VALUE": [ 0. ], "CONDITION": [ ">" ] },
   #"isTraining": { "VALUE": [ "1" ], "CONDITION": [ "==" ] },
 }
 
@@ -76,21 +96,21 @@ params = {
     "MCWEIGHT": None
   },
   "MODEL": { # parameters for setting up the NAF model
-    "NODES_COND": 50,
-    "HIDDEN_COND": 3,
-    "NODES_TRANS": 10,
+    "NODES_COND": 16,
+    "HIDDEN_COND": 1,
+    "NODES_TRANS": 8,
     "LRATE": 5e-3,
     "DECAY": 0.1,
-    "GAP": 1000,
+    "GAP": 500,
     "DEPTH": 1,
     "REGULARIZER": "ALL", # DROPOUT, BATCHNORM, ALL, NONE
     "INITIALIZER": "RandomNormal", # he_normal, RandomNormal
-    "ACTIVATION": "softplus",
-    "BETA1": 0.9,
+    "ACTIVATION": "softplus", # softplus, relu, swish
+    "BETA1": 0.98,
     "BETA2": 0.999,
     "MMD SIGMAS": [1.0],
     "MMD WEIGHTS": None,
-    "MINIBATCH": 2**12,
+    "MINIBATCH": 2**11,
     "RETRAIN": True,
     "PERMUTE": False,
     "SEED": 101, # this can be overridden when running train_abcdnn.py
@@ -98,18 +118,18 @@ params = {
     "VERBOSE": False  
   },
   "TRAIN": {
-    "EPOCHS": 2000,
-    "PATIENCE": 2000,
-    "MONITOR": 200,
-    "MONITOR THRESHOLD": 0,  # only save model past this epoch
-    "PERIODIC SAVE": True,  # saves model at each epoch step according to "MONITOR" 
+    "EPOCHS": 2500,
+    "PATIENCE": 100000,
+    "MONITOR": 100,
+    "MONITOR THRESHOLD": 1500,  # only save model past this epoch
+    "PERIODIC SAVE": True,   # saves model at each epoch step according to "MONITOR" 
     "SHOWLOSS": True,
-    "EARLY STOP": True,    # early stop if validation loss begins diverging
+    "EARLY STOP": False,      # early stop if validation loss begins diverging
   },
   "PLOT": {
     "RATIO": [ 0.25, 2.0 ], # y limits for the ratio plot
-    "YSCALES": [ "log" ],   # which y-scale plots to produce
-    "NBINS": 20,            # histogram x-bins
+    "YSCALE": "linear",   # which y-scale plots to produce
+    "NBINS": 31,            # histogram x-bins
     "ERRORBARS": True,      # include errorbars on hist
     "NORMED": True,         # normalize histogram counts/density
     "SAVE": False,          # save the plots as png
