@@ -23,24 +23,24 @@ sampleDir = {
 }
 
 variables = {
-  "thirdcsvb_bb": {
-    "CATEGORICAL": False,
-    "TRANSFORM": True,
-    "LIMIT": [0.,1.],
-    "LATEX": "DeepJet\ 3"
-  },
+  #"thirdcsvb_bb": {
+  #  "CATEGORICAL": False,
+  #  "TRANSFORM": True,
+  #  "LIMIT": [0.,1.],
+  #  "LATEX": "DeepJet\ 3"
+  #},
   #"minDR_lepBJet": {
   #  "CATEGORICAL": False,
   #  "TRANSFORM": True,
   #  "LIMIT": [0.,5.],
   #  "LATEX": "DNN"
   #},
-  #"AK4HT": {
-  #  "CATEGORICAL": False,
-  #  "TRANSFORM": True,
-  #  "LIMIT": [0.,3000.],
-  #  "LATEX": "H_T\ (GeV)"
-  #},
+  "AK4HT": {
+    "CATEGORICAL": False,
+    "TRANSFORM": True,
+    "LIMIT": [0.,3000.],
+    "LATEX": "H_T\ (GeV)"
+  },
   "DNN_1to40_3t": {
     "CATEGORICAL": False,
     "TRANSFORM": True,
@@ -50,13 +50,13 @@ variables = {
   "NJetsCSV_JetSubCalc": {
     "CATEGORICAL": True,
     "TRANSFORM": False,
-    "LIMIT": [0,2],
+    "LIMIT": [2,3],
     "LATEX": "N_b"
   },
   "NJets_JetSubCalc": {
     "CATEGORICAL": True,
     "TRANSFORM": False,
-    "LIMIT": [4,5],
+    "LIMIT": [5,7],
     "LATEX": "N_j"
   },
 }
@@ -64,6 +64,7 @@ variables = {
 selection = { # edit these accordingly
   "NJets_JetSubCalc": { "VALUE": [ 4 ], "CONDITION": [ ">=" ] },
   "NJetsCSV_JetSubCalc": { "VALUE": [ 0 ], "CONDITION": [ ">=" ] },
+  "NresolvedTops1pFake": { "VALUE": [ 1 ], "CONDITION": [ ">=" ] },
   "corr_met_MultiLepCalc": { "VALUE": [ 20. ], "CONDITION": [ ">" ] },
   "MT_lepMet": { "VALUE": [ 0 ], "CONDITION": [ ">" ] },
   "minDR_lepJet": { "VALUE": [ 0.4 ], "CONDITION": [ ">" ] },
@@ -76,18 +77,18 @@ selection = { # edit these accordingly
 
 regions = {
   "X": {
-    "VARIABLE": "NJetsCSV_JetSubCalc",
-    "INCLUSIVE": True,
-    "MIN": 0,
-    "MAX": 2,
-    "SIGNAL": 2
-  },
-  "Y": {
     "VARIABLE": "NJets_JetSubCalc",
     "INCLUSIVE": True,
-    "MIN": 4,
-    "MAX": 5,
-    "SIGNAL": 5
+    "MIN": 5,
+    "MAX": 7,
+    "SIGNAL": 7
+  },
+  "Y": {
+    "VARIABLE": "NJetsCSV_JetSubCalc",
+    "INCLUSIVE": True,
+    "MIN": 2,
+    "MAX": 3,
+    "SIGNAL": 3
   }
 }
 
@@ -110,7 +111,7 @@ params = {
     "BETA2": 0.999,
     "MMD SIGMAS": [1.0],
     "MMD WEIGHTS": None,
-    "MINIBATCH": 2**11,
+    "MINIBATCH": 2**8,
     "RETRAIN": True,
     "PERMUTE": False,
     "SEED": 101, # this can be overridden when running train_abcdnn.py
@@ -118,10 +119,10 @@ params = {
     "VERBOSE": False  
   },
   "TRAIN": {
-    "EPOCHS": 2500,
+    "EPOCHS": 1800,
     "PATIENCE": 100000,
-    "MONITOR": 100,
-    "MONITOR THRESHOLD": 1500,  # only save model past this epoch
+    "MONITOR": 25,
+    "MONITOR THRESHOLD": 0,  # only save model past this epoch
     "PERIODIC SAVE": True,   # saves model at each epoch step according to "MONITOR" 
     "SHOWLOSS": True,
     "EARLY STOP": False,      # early stop if validation loss begins diverging
@@ -129,7 +130,7 @@ params = {
   "PLOT": {
     "RATIO": [ 0.25, 2.0 ], # y limits for the ratio plot
     "YSCALE": "linear",   # which y-scale plots to produce
-    "NBINS": 31,            # histogram x-bins
+    "NBINS": 21,            # histogram x-bins
     "ERRORBARS": True,      # include errorbars on hist
     "NORMED": True,         # normalize histogram counts/density
     "SAVE": False,          # save the plots as png
