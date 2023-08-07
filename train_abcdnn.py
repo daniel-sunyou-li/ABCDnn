@@ -14,22 +14,25 @@ import config
 import abcdnn
 
 parser = ArgumentParser()
-parser.add_argument( "-s", "--source", default = "", required = False )
-parser.add_argument( "-t", "--target", default = "", required = False )
+parser.add_argument( "-s", "--source", required = True )
+parser.add_argument( "-b", "--minor",  required = True )
+parser.add_argument( "-t", "--target", required = True )
 parser.add_argument( "--hpo", action = "store_true" )
 parser.add_argument( "--randomize", action = "store_true" )
 parser.add_argument( "--verbose", action = "store_true" )
-parser.add_argument( "-m", "--modeltag", default = "best_model" )
-parser.add_argument( "-d", "--disc_tag", default = "ABCDnn" )
+parser.add_argument( "--closure", action = "store_true" )
+parser.add_argument( "-m", "--modeltag", default = "best_model", help = "Name of model saved to Results directory" )
+parser.add_argument( "-d", "--disc_tag", default = "ABCDnn", help = "Postfix appended to original branch names of transformed variables" )
 args = parser.parse_args()
 
-if args.source != "": config.params[ "EVENTS" ][ "SOURCE" ] = args.source
-if args.target != "": config.params[ "EVENTS" ][ "TARGET" ] = args.target
 if args.randomize: config.params["MODEL"]["SEED"] = np.random.randint( 100000 )
 
 hp = { key: config.params["MODEL"][key] for key in config.params[ "MODEL" ]  }
 
 print( "[START] Training ABCDnn model {} iwth discriminator: {}".format( args.modeltag, args.disc_tag ) )
+if config.params[ "MODEL" ][ "RETRAIN" ]:
+  print( "[INFO] Deleting existing model with name: {}".format( args.modeltag ) )
+  os.system( "rm -rvf Results/{}*".format( args.modeltag ) )
 if args.hpo:
   print( "  [INFO] Running on optimized parameters" )
   with open( os.path.join( config.results_path, "opt_params.json" ), "r" ) as jsf:
@@ -42,12 +45,13 @@ for key in hp: print( "   - {}: {}".format( key, hp[key] ) )
                
 abcdnn_ = abcdnn.ABCDnn_training()
 abcdnn_.setup_events(
-  rSource = config.params[ "EVENTS" ][ "SOURCE" ], 
-  rTarget = config.params[ "EVENTS" ][ "TARGET" ],
+  rSource = args.source, 
+  rMinor  = args.minor,
+  rTarget = args.target,
   selection = config.selection,
   variables = config.variables,
   regions = config.regions,
-  mc_weight = config.params[ "EVENTS" ][ "MCWEIGHT" ]
+  closure = args.closure
 )
 
 abcdnn_.setup_model(
@@ -71,6 +75,7 @@ abcdnn_.setup_model(
   seed = config.params[ "MODEL" ][ "SEED" ],
   verbose = config.params[ "MODEL" ][ "VERBOSE" ],
   model_tag = args.modeltag,
+  closure = config.params[ "MODEL" ][ "CLOSURE" ],
   permute = config.params[ "MODEL" ][ "PERMUTE" ],
   retrain = config.params[ "MODEL" ][ "RETRAIN" ]
 )
@@ -87,3 +92,4 @@ abcdnn_.train(
 
 abcdnn_.evaluate_regions()
 abcdnn_.extended_ABCD()
+abcdnn_.save_hyperparameters()

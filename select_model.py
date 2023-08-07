@@ -1,4 +1,5 @@
 import os
+from json import loads as load_json
 from argparse import ArgumentParser
 
 parser = ArgumentParser()

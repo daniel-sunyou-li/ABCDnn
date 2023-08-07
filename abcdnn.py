@@ -52,13 +52,9 @@ def NAF( inputdim, conddim, activation, regularizer, initializer, nodes_cond, hi
       for iv in range( hidden_cond ):
         if regularizer.upper() in [ "BATCHNORM", "ALL" ]:
           condnet = layers.BatchNormalization( name = "BATCHNORM_{}_{}_{}".format( idepth, i, iv ) )( condnet )
+        condnet = layers.Dense( nodes_cond, activation = activation_key[ activation ], kernel_initializer = initializer, name = "COND_DENSE_{}_{}_{}".format( idepth, i, iv ) )( condnet )
         if regularizer.upper() in [ "DROPOUT", "ALL" ]:
           condnet = layers.Dropout( 0.3, name = "DROPOUT_{}_{}_{}".format( idepth, i, iv ) )( condnet )
-        condnet = layers.Dense( nodes_cond, activation = activation_key[ activation ], kernel_initializer = initializer, name = "COND_DENSE_{}_{}_{}".format( idepth, i, iv ) )( condnet )
-      if regularizer.upper() in [ "BATCHNORM", "ALL" ]:
-        condnet = layers.BatchNormalization( name = "BATCHNORM_{}_{}".format( idepth, i ) )( condnet )
-      if regularizer.upper() in [ "DROPOUT", "ALL" ]:
-        condnet = layers.Dropout( 0.3, name = "DROPOUT_{}_{}".format( idepth, i ) )( condnet )
       w1 = layers.Dense( nodes_trans, activation = tf.nn.softplus, kernel_initializer = initializer, name = "SIGMOID_WEIGHT_{}_{}".format( idepth, i ) )( condnet ) # has to be softplus for output to be >0
       b1 = layers.Dense( nodes_trans, activation = None, name = "SIGMOID_BIAS_{}_{}".format( idepth, i ) )( condnet )
       del condnet
@@ -69,7 +65,7 @@ def NAF( inputdim, conddim, activation, regularizer, initializer, nodes_cond, hi
       # inverse conditioner network
       condnet = xcondin
       #condnet = layers.Dense( nodes_cond, activation = activation_key[ activation ], name = "INV_COND_DENSE_{}_{}_{}".format( idepth, i, iv ) )( condnet )
-      w2 = layers.Dense( nodes_trans, activation = tf.nn.softplus, kernel_initializer = "glorot_normal", name = "INV_SIGMOID_WEIGHT_{}_{}".format( idepth, i ) )( condnet )
+      w2 = layers.Dense( nodes_trans, activation = tf.nn.softplus, name = "INV_SIGMOID_WEIGHT_{}_{}".format( idepth, i ) )( condnet )
       w2 = w2 / ( 1e-5 + tf.reduce_sum( w2, axis = 1, keepdims = True ) ) # normalize the transformer output for softmax weighting to retain normalization in sigmoidal space
       
       # inverse transformer network
@@ -168,9 +164,6 @@ class OneHotEncoder_int( object ):
     encoded = np.concatenate( tuple( arraylist ), axis = 1 ).astype( np.float32 )
     return encoded
 
-  def transform( self, inputdata ):
-    return self.encode( inputdata )
-
   def decode( self, onehotdata ):
     current_col = 0 # start from column 0
     arraylist = []
@@ -232,8 +225,8 @@ def unweight(pddata):
     pddata = pddata.append([matches]*multfactor)
     idx += nmatches
   return pddata
-  
-def prepdata( rSource, rTarget, variables, regions, mc_weight = None ):
+
+def prepdata( rSource, rMinor, rTarget, variables, regions, closure ):
 # mc_weight(str) = option for weighting MC by the xsec
 # rSource (str) = source ROOT file
 # rTarget (str) = target ROOT file
@@ -241,7 +234,7 @@ def prepdata( rSource, rTarget, variables, regions, mc_weight = None ):
 # variables (dict) = list of all variables considered and associated parameters
 
   # set up one-hot encoder
-  vNames = [ str( key ) for key in variables if variables[key]["TRANSFORM"] ]
+  vNames = [ str( key ) for key in sorted( variables ) if variables[key]["TRANSFORM"] ]
   if regions["Y"]["VARIABLE"] in variables and regions["X"]["VARIABLE"] in variables:
     vNames.append( regions["Y"]["VARIABLE"] )
     vNames.append( regions["X"]["VARIABLE"] )
@@ -254,39 +247,27 @@ def prepdata( rSource, rTarget, variables, regions, mc_weight = None ):
   _onehotencoder = OneHotEncoder_int( categorical, lowerlimit = lowerlimit, upperlimit = upperlimit )
 
   # read MC and data
-  mcf = uproot.open( rSource )
-  dataf = uproot.open( rTarget )
-  tree_mc = mcf[ 'Events' ]
-  tree_data = dataf[ 'Events' ]
+  fMajor = uproot.open( rSource )
+  fMinor = uproot.open( rMinor )
+  fTarget = uproot.open( rTarget )
+  tMajor = fMajor[ 'Events' ]
+  tMinor = fMinor[ 'Events' ]
+  tTarget = fTarget[ 'Events' ]
   
-  mc_dfs = tree_mc.pandas.df( vNames )
-  mc_dfs = mc_dfs.loc[ ( mc_dfs[ regions[ "X" ][ "VARIABLE" ] ] >= regions[ "X" ][ "MIN" ] ) & ( mc_dfs[ regions[ "Y" ][ "VARIABLE" ] ] >= regions[ "Y" ][ "MIN" ] ) ]
-  data_dfs = tree_data.pandas.df( vNames )
-  data_dfs = data_dfs.loc[ ( data_dfs[ regions[ "X" ][ "VARIABLE" ] ] >= regions[ "X" ][ "MIN" ] ) & ( data_dfs[ regions[ "Y" ][ "VARIABLE" ] ] >= regions[ "Y" ][ "MIN" ] ) ]
+  dfMajor = tMajor.pandas.df( vNames )
+  dfMajor = dfMajor.loc[ ( dfMajor[ regions[ "X" ][ "VARIABLE" ] ] >= regions[ "X" ][ "MIN" ] ) & ( dfMajor[ regions[ "Y" ][ "VARIABLE" ] ] >= regions[ "Y" ][ "MIN" ] ) ]
+  dfMinor = tMinor.pandas.df( vNames + [ "xsecWeight" ] )
+  dfMinor = dfMinor.loc[ ( dfMinor[ regions[ "X" ][ "VARIABLE" ] ] >= regions[ "X" ][ "MIN" ] ) & ( dfMinor[ regions[ "Y" ][ "VARIABLE" ] ] >= regions[ "Y" ][ "MIN" ] ) ]
+  dfTarget = tTarget.pandas.df( vNames )
+  dfTarget = dfTarget.loc[ ( dfTarget[ regions[ "X" ][ "VARIABLE" ] ] >= regions[ "X" ][ "MIN" ] ) & ( dfTarget[ regions[ "Y" ][ "VARIABLE" ] ] >= regions[ "Y" ][ "MIN" ] ) ]
 
-  # do not consider cross section weight. The weight of the resut file is filled with 1.
-  if mc_weight == None:
-    inputrawmc = mc_dfs
-    inputrawmcweight = None
-
-  # The weight of the result file is filled with 'xsecWeight'
-  if mc_weight == "weight":
-    inputrawmc = mc_dfs
-    inputrawmcweight = tree_mc.pandas.df( [ 'xsecWeight' ] )[ mc_select ].to_numpy( dtype=np.float32 )
+  inputRawMajor = dfMajor
+  inputEncMajor = _onehotencoder.encode( inputRawMajor.to_numpy( dtype=np.float32 ) )
   
-  # duplicate source samples according to the cross section. The weight of the resut file is filled with 1.
-  # may take too long if input sample is the combined one with several samples that has different cross section.
-  if mc_weight == "unweight":
-    inputrawmc = unweight( tree_mc.pandas.df( vars + ['xsecWeight'] )[ mc_select ]).drop( columns=['xsecWeight'] )
-    inputrawmcweight = None
-  
-  inputsmc_enc = _onehotencoder.encode( inputrawmc.to_numpy( dtype=np.float32 ) )
+  inputRawMinor = dfMinor # not used in training
 
-  inputrawdata = data_dfs
-  inputrawdata_np = inputrawdata.to_numpy( dtype=np.float32 )  
-  inputrawdata_enc = _onehotencoder.encode( inputrawdata_np )
-
-  inputsdata = _onehotencoder.encode( inputrawdata.to_numpy(dtype=np.float32))
+  inputRawTarget = dfTarget
+  inputEncTarget = _onehotencoder.encode( inputRawTarget.to_numpy( dtype=np.float32 ) )
 
   ncats = _onehotencoder.ncatgroups
   ncat_per_feature = _onehotencoder.categories_per_feature
@@ -298,9 +279,9 @@ def prepdata( rSource, rTarget, variables, regions, mc_weight = None ):
   # normalize data
   for ncatfeat in ncat_per_feature:
     if ncatfeat == 0: # for float features, get mean and sigma
-      mean = np.mean( inputrawdata_np[:, currentcolumn], axis=0, dtype=np.float32 ).reshape( 1, 1 )
+      mean = np.mean( inputRawTarget.to_numpy( dtype = np.float32 )[:, currentcolumn], axis=0, dtype=np.float32 ).reshape( 1, 1 )
       meanslist.append( mean )
-      sigma = np.std( inputrawdata_np[:, currentcolumn], axis=0, dtype=np.float32 ).reshape( 1, 1 )
+      sigma = np.std( inputRawTarget.to_numpy( dtype = np.float32 )[:, currentcolumn], axis=0, dtype=np.float32 ).reshape( 1, 1 )
       sigmalist.append( sigma )
       currentcolumn += 1
     else: # categorical features do not get changed
@@ -310,13 +291,13 @@ def prepdata( rSource, rTarget, variables, regions, mc_weight = None ):
       sigmalist.append( sigma )
       currentcolumn += ncatfeat
 
-  inputmeans = np.hstack( meanslist )
-  inputsigma = np.hstack( sigmalist )
+  inputMean = np.hstack( meanslist )
+  inputSigma = np.hstack( sigmalist )
 
-  normedinputs_data = ( inputrawdata_enc - inputmeans ) / inputsigma        # normed Data
-  normedinputs_mc = ( inputsmc_enc - inputmeans ) / inputsigma              # normed MC  
+  inputNormTarget = ( inputEncTarget - inputMean ) / inputSigma        # normed Data
+  inputNormMajor = ( inputEncMajor - inputMean ) / inputSigma              # normed MC  
   
-  return inputrawdata, inputrawmc, inputrawmcweight, normedinputs_data, normedinputs_mc, inputmeans, inputsigma, vNames, ncat_per_feature
+  return inputRawTarget, inputRawMajor, inputRawMinor, inputNormTarget, inputNormMajor, inputMean, inputSigma, vNames, ncat_per_feature
   
   
 # construct the ABCDnn model here
@@ -324,7 +305,7 @@ class ABCDnn(object):
   def __init__( self, variables, regions,inputdim_categorical_list, inputdim, nodes_cond, hidden_cond,
                nodes_trans, minibatch, activation, regularizer, initializer,
                depth, lr, gap, conddim, beta1, beta2, mmd_sigmas, mmd_weights, decay,
-               retrain, savedir, savefile, disc_tag, 
+               retrain, savedir, savefile, disc_tag, closure,
                seed, permute, verbose, model_tag ):
     self.variables = variables
     self.regions = regions
@@ -339,6 +320,7 @@ class ABCDnn(object):
     self.activation = activation
     self.regularizer = regularizer
     self.initializer = initializer
+    self.closure = closure
     self.depth = depth
     self.lr = lr 
     self.decay = decay
@@ -426,19 +408,16 @@ class ABCDnn(object):
     self.categoricals_data, self.categorical_data_indices_grouped = self.category_sorted( self.numpydata, verbose )
     pass
 
-  def setmcdata(self, numpydata, verbose, eventweight = None ):
+  def setmcdata(self, numpydata, verbose ):
     self.mcnumpydata = numpydata
     self.mcntotalevents = numpydata.shape[0]
     self.mcdatacounter = 0
     self.mcrandorder = np.random.permutation( self.mcnumpydata.shape[0] )
-    if eventweight is not None:
-      self.mceventweight = eventweight
-    else:
-      self.mceventweight = np.ones( ( self.mcntotalevents, 1 ) , np.float32 )
+    self.mceventweight = np.ones( ( self.mcntotalevents, 1 ) , np.float32 )
     self.categoricals_mc, self.categorical_mc_indices_grouped = self.category_sorted( self.mcnumpydata, verbose )
     pass
 
-  def savehyperparameters(self, transfer, transfer_err, inputs, means, sigmas ):
+  def savehyperparameters(self, inputs, means, sigmas, transfer ):
     """Write hyper parameters into file
     """
     means_list = [ str( mean ) for mean in means[0] ]
@@ -462,14 +441,14 @@ class ABCDnn(object):
       "BETA2": self.beta2, 
       "MINIBATCH": self.minibatch,
       "DISC TAG": self.disc_tag,
-      "TRANSFER": transfer,
-      "TRANSFER ERR": transfer_err,
       "INPUTS": inputs_list,
       "INPUTMEANS": means_list,
       "INPUTSIGMAS": sigmas_list,
       "VARIABLES": self.variables,
       "REGIONS": self.regions,
-      "EPOCHS": self.steps
+      "EPOCHS": self.steps,
+      "TRANSFER": transfer,
+      "CLOSURE": self.closure
     }
     
     with open( os.path.join( self.savedir, "{}.json".format( self.model_tag ) ), "w" ) as f:
@@ -535,7 +514,7 @@ class ABCDnn(object):
     if rChoice == "B": nextconditional = np.array( [ 1, 0, 0, 0, 1 ] )
     #nextconditional = self.numpydata[ self.randorder[batchbegin], self.inputdim: ]
     target_b, source_b, weight_b = self.find_condmatch( size, nextconditional )
-
+    
     while len( target_b ) != len( source_b ):
       self.datacounter += size
       if self.datacounter >= self.ntotalevents:
@@ -544,11 +523,40 @@ class ABCDnn(object):
       batchbegin = self.datacounter
       nextconditional = self.numpydata[ self.randorder[ batchbegin ], self.inputdim: ]
       target_b, source_b, weight_b = self.find_condmatch( size, nextconditional )
-    
     self.datacounter += size
     self.this_source = source_b
     self.this_target = target_b
     self.this_weight = weight_b
+
+    return source_b, target_b, weight_b
+
+  def get_batch_region( self, region, size=None ):
+    """Return minibatch from region of choice"""
+    if size is None:
+      size = int( self.minibatch )
+      
+    # reset counter if no more entries left for current batch
+    if self.datacounter + size >= self.ntotalevents:
+      self.datacounter = self.datacounter + size - self.ntotalevents
+      self.randorder = np.random.permutation( self.numpydata.shape[0] )
+    
+    batchbegin = self.datacounter
+    if region == "X": nextconditional = np.array( [ 1, 0, 1, 0, 0 ] )
+    if region == "Y": nextconditional = np.array( [ 0, 1, 1, 0, 0 ] )
+    if region == "A": nextconditional = np.array( [ 1, 0, 0, 1, 0 ] )
+    if region == "C": nextconditional = np.array( [ 0, 1, 0, 1, 0 ] )
+    if region == "B": nextconditional = np.array( [ 1, 0, 0, 0, 1 ] )
+    target_b, source_b, weight_b = self.find_condmatch( size, nextconditional )
+    
+    while len( target_b ) != len( source_b ):
+      self.datacounter += size
+      if self.datacounter >= self.ntotalevents:
+        self.datacounter = self.datacounter - self.ntotalevents
+        self.randorder = np.random.permutation( self.numpydata.shape[0] )
+      batchbegin = self.datacounter
+      nextconditional = self.numpydata[ self.randorder[ batchbegin ], self.inputdim: ]
+      target_b, source_b, weight_b = self.find_condmatch( size, nextconditional )
+      
     return source_b, target_b, weight_b
 
   # eqvuialent to train_step = tf.function( train_step )
@@ -576,34 +584,55 @@ class ABCDnn(object):
 
     return glossv, mmdloss
 
+  def get_loss( self, source, target ):
+    with tf.GradientTape() as gtape:
+      generated = tf.concat(
+        [
+          self.model( source ),
+          target[:, -self.conddim:]
+        ],
+        axis = -1
+      )
+      mmdloss = mix_rbf_mmd2( target[:, :self.inputdim], generated[:,:self.inputdim], self.mmd_sigmas, self.mmd_weights )
+
+    return mmdloss
+
   def train( self, steps = 10000, monitor = 1000, patience = 100, early_stopping = True, monitor_threshold = 0, hpo = False, periodic_save = False ):
     # need to update this to use a validation set
-    print( "{:<5} / {:<8} / {:<8} / {:<8} / {:<6} / {:<10} / {:<10} / {:<10}".format( "Epoch", "MMD", "Min MMD", "Avg MMD", "Region", "DNN %", "HT %", "L Rate" ) ) 
+    print( "{:<5} / {:<9} / {:<9} / {:<9} / {:<16} / {:<6} / {:<10}".format( "Epoch", "MMD", "Min MMD", "Avg MMD", "Avg MMD Global", "Region", "L Rate" ) ) 
     impatience = 0      # don't edit
     stop_train = False  # don't edit
     self.minepoch = 0
     self.steps = steps
     save_counter = 0    # edit so you aren't saving every time the model improves --> takes too much time
     losses = []
+    global_losses = []
     for i in range( steps ):
       source, target, batchweight = self.get_next_batch()
       # train the model on this batch
       glossv, mmdloss  = self.train_step( source, target, batchweight )
+      mmdloss_global = []
+      for region in [ "A", "B", "C", "X", "Y" ]:
+        source_r, target_r, weight_r = self.get_batch_region( region )
+        mmdloss_global.append( self.get_loss( source_r, target_r ) )
+      avg_mmdloss_global = np.mean( mmdloss_global )
       # currently not using glossv because mmdloss is a scalar and glossv is the mean of mmdloss
       # generator update
+      global_losses.append( avg_mmdloss_global )
       losses.append( mmdloss )
-      if i == 0: self.minloss = mmdloss
+      if i == 0: 
+        self.minloss = avg_mmdloss_global
       # early stopping on validation implementation
       else: 
-        if mmdloss.numpy() < self.minloss.numpy():
+        if avg_mmdloss_global < self.minloss:
           self.minepoch = i
           impatience = 0 # reset the impatience counter
           if not hpo: # don't save models during hyper parameter optimization training to save time
-            if save_counter > monitor or mmdloss.numpy() < 0.5 * self.minloss.numpy(): # reduce number of saved models
+            if save_counter > monitor: # reduce number of saved models
               save_counter = 0
               self.checkpointmgr.save()
               self.model.save_weights( "./Results/{}".format( self.model_tag ) )
-          self.minloss = mmdloss
+          self.minloss = avg_mmdloss_global
         elif impatience > patience and early_stopping:
           print( "[WARN] Early stopping after {} epochs without improvement in loss (min loss = {:.3e})".format( i, self.minloss ) )
           stop_train = True
@@ -616,22 +645,13 @@ class ABCDnn(object):
         if cArr[0] == 1 and cArr[3] == 1: category_ = "A"
         if cArr[1] == 1 and cArr[3] == 1: category_ = "C"
         if cArr[0] == 1 and cArr[4] == 1: category_ = "B"
-        x1_MC = np.mean( self.model( source )[:,:self.inputdim][:,0] )
-        x1_data = np.mean( target[:,:self.inputdim][:,0] )
-        try:
-          x2_MC = np.mean( self.model( source )[:,:self.inputdim][:,1] )
-          x2_data = np.mean( target[:,:self.inputdim][:,1] )
-        except:
-          x2_MC = 1
-          x2_data = 1
-        print( "{:<5}   {:<8.1e}   {:<8.1e}   {:<8.1e}   {:<6}   {:<10.1f}   {:<10.1f}   {:<10.2e}".format( 
+        print( "{:<5}   {:<9.2e}   {:<9.2e}   {:<9.2e}   {:<16.2e}   {:<6}     {:<10.2e}".format( 
           self.checkpoint.global_step.numpy(),
           mmdloss.numpy(),
           self.minloss,
           np.mean( losses[-monitor:] ),
+          np.mean( global_losses[-monitor:] ),
           category_,
-          abs( 100. * ( x1_MC - x1_data ) / x1_data ),
-          abs( 100. * ( x2_MC - x2_data ) / x2_data ),
           self.optimizer._decayed_lr( tf.float32 )
          ) )
         self.monitor( 
@@ -653,51 +673,34 @@ class ABCDnn(object):
     os.system( "cp -v ./Results/{}.index ./Results/{}_EPOCH{}.index".format( self.model_tag, self.model_tag, self.minepoch ) )
     self.save_training_monitor()
 
-  def display_training(self):
-    # Following section is for creating movie files from trainings
-
-    fig, ax = plt.subplots(1,2, figsize=(6,6))
-    monarray = np.array(self.monitor_record)
-    x = monarray[0::, 0]
-    ax[0].plot(x, monarray[0::, 1], color='r', label='MMD (Training)')
-    ax[0].plot(x, monarray[0::, 2], color='b', label='MMD (Validation)')
-    ax[0].set_ylabel( "MMD Loss", ha = "right", y = 1.0 )
-    ax[0].set_yscale('linear')
-    ax[0].legend()
-    ax[1].plot(x, monarray[0::, 2], color='r', label='MMD')
-    ax[0].set_ylabel( "MMD", ha = "right", y = 1.0 )
-    ax[1].set_yscale('log')
-    ax[1].legend()
-
-    plt.draw()
-
-    #fig.savefig(os.path.join(self.savedir, 'trainingperf.pdf'))
-    pass  
-
 class ABCDnn_training(object):
   def __init__( self ):
     pass
 
-  def setup_events( self, rSource, rTarget, selection, variables, regions, mc_weight ):
+  def setup_events( self, rSource, rMinor, rTarget, selection, variables, regions, closure ):
     # obtain the normalized data (plus others)
     self.rSource = rSource        # (str) path to source ROOT file
+    self.rMinor = rMinor          # (str) path to minor ROOT file
     self.rTarget = rTarget        # (str) path to target ROOT file
     self.variables = variables    # (dict) variable limits and type
     self.regions = regions        # (dict) control and signal regions
-    self.mc_weight = mc_weight    # (str) use xsec weights
 
-    rawinputs, rawinputsmc, rawmcweight, normedinputs, normedinputsmc, inputmeans, \
-      inputsigma, inputnames, ncat_per_feature = prepdata( rSource, rTarget, 
-      variables, regions, mc_weight )
+    self.sourceSF = 1. / ( float( self.rSource.split( "p" )[-1].split( ".root" )[0] ) / 100. )
+    self.targetSF = 1. / ( float( self.rTarget.split( "p" )[-1].split( ".root" )[0] ) / 100. )
+    self.minorSF  = 1. / ( float( self.rMinor.split( "p" )[-1].split( ".root" )[0] )  / 100. )
+
+    rawinputs, rawinputsmc, rawinputsminor, normedinputs, normedinputsmc, inputMean, \
+      inputSigma, inputnames, ncat_per_feature = prepdata( rSource, rMinor, rTarget,
+      variables, regions, closure )
 
     self.rawinputs = rawinputs                # unnormalized data tree after event selection
-    self.rawinputsmc = rawinputsmc            # unnormalized mc tree after event selection
-    self.rawmcweight = rawmcweight            # xsec weighted mc tree after event selection
+    self.rawinputsmc = rawinputsmc            # unnormalized mc major tree after event selection
+    self.rawinputsminor = rawinputsminor      # unnormalized mc minor tree after event selection
     self.normedinputs = normedinputs          # normalized data tree after event selection
     self.normedinputsmc = normedinputsmc      # normalized mc tree after event selection
     self.inputs = inputnames                  # name of inputs
-    self.inputmeans = inputmeans              # mean of unnormalized data
-    self.inputsigma = inputsigma              # rms of unnormalized data
+    self.inputMean = inputMean              # mean of unnormalized data
+    self.inputSigma = inputSigma              # rms of unnormalized data
 
     self.inputdim = len( list( variables.keys() ) ) - 2 # the total number of transformed variables
     self.ncat_per_feature = ncat_per_feature[0:self.inputdim] # number of categories per categorical feature
@@ -727,11 +730,6 @@ class ABCDnn_training(object):
 
     self.bkg_select_mc = ~self.sig_select_mc
     self.normedinputsmc_bkg = self.normedinputsmc[ self.bkg_select_mc ]
-
-    if self.rawmcweight is None:
-      self.bkgmcweight = None
-    else:
-      self.bkgmcweight = self.rawmcweight[ self.bkg_select_mc ]
   
     pass
 
@@ -739,7 +737,7 @@ class ABCDnn_training(object):
           nodes_cond = 8, hidden_cond = 1, nodes_trans = 8, minibatch = 64, lr = 5.0e-3,
           depth = 1, activation = "swish", regularizer = "None", initializer = "RandomNormal", decay = 1e-1,
           gap = 1000., beta1 = 0.9, beta2 = 0.999, mmd_sigmas = (0.1,1.0), mmd_weights = None,
-          savedir = "/ABCDNN/", savefile = "abcdnn.pkl", disc_tag = "ABCDnn", mc_weight = None, 
+          savedir = "/ABCDNN/", savefile = "abcdnn.pkl", disc_tag = "ABCDnn", closure = 0.03, mc_weight = None, 
           retrain = False, seed = 100, permute = False, model_tag = "best_model", verbose = False
         ):
     self.nodes_cond = nodes_cond    # (int) number of nodes in conditional layer(s)
@@ -760,6 +758,7 @@ class ABCDnn_training(object):
     self.savedir = savedir          # (str) save directory for output results
     self.savefile = savefile        # (str) save file name for output results
     self.disc_tag = disc_tag        # (str) tag to add to transformed variable name
+    self.closure = closure          # (float) multiplicative factor to vary the ABCDnn output
     self.seed = seed                # (int) RNG seed
     self.retrain = retrain          # (bool) start a new training or continue from where left-off
     self.mc_weight = mc_weight      # (str) weight MC values according to xsec
@@ -791,6 +790,7 @@ class ABCDnn_training(object):
       savedir = self.savedir, 
       savefile = self.savefile,
       disc_tag = self.disc_tag,
+      closure = self.closure,
       seed = self.seed, 
       permute = self.permute, 
       model_tag = self.model_tag,
@@ -798,7 +798,7 @@ class ABCDnn_training(object):
     )
 
     self.model.setrealdata( self.normedinputs_bkg, verbose = verbose )
-    self.model.setmcdata( self.normedinputsmc_bkg, eventweight = self.bkgmcweight, verbose = verbose )
+    self.model.setmcdata( self.normedinputsmc_bkg, verbose = verbose )
 
   def train( self, steps = 10000, monitor = 1000, patience = 100, early_stopping = True, display_loss = False, monitor_threshold = 0, hpo = False, periodic_save = False ):
     self.model.train( steps = steps, monitor = monitor, patience = patience, early_stopping = early_stopping, monitor_threshold = monitor_threshold, hpo = hpo, periodic_save = periodic_save )
@@ -813,16 +813,18 @@ class ABCDnn_training(object):
       xgen = self.model.predict( xin )
       self.fakelist.append( xgen )
     self.fakedata = np.vstack( self.fakelist )
-    self.fakedata = self.fakedata * self.inputsigma[ :, :self.inputdim ] + self.inputmeans[ :, :self.inputdim ]
+    self.fakedata = self.fakedata * self.inputSigma[ :, :self.inputdim ] + self.inputMean[ :, :self.inputdim ]
 
   def evaluate_regions( self, hpo = False, verbose = True ):
     self.select = {
         "DATA": {},
-        "MC": {}
+        "MC": {},
+        "MINOR": {},
     }
     self.count = {
         "DATA": {},
-        "MC": {}
+        "MC": {},
+        "MINOR": {}
     }
     self.fakedata = []
     self.rawdata = []
@@ -841,27 +843,31 @@ class ABCDnn_training(object):
         if x == self.regions[ "X" ][ "SIGNAL" ] and self.regions[ "X" ][ "INCLUSIVE" ]:
           self.select[ "DATA" ][ self.region[i] ] = ( self.rawinputs[ self.regions[ "X" ][ "VARIABLE" ] ] >= x )
           self.select[ "MC" ][ self.region[i] ] = ( self.rawinputsmc[ self.regions[ "X" ][ "VARIABLE" ] ] >= x )
+          self.select[ "MINOR" ][ self.region[i] ] = ( self.rawinputsminor[ self.regions[ "X" ][ "VARIABLE" ] ] >= x )
         else: 
           self.select[ "DATA" ][ self.region[i] ] = ( self.rawinputs[ self.regions[ "X" ][ "VARIABLE" ] ] == x )
           self.select[ "MC" ][ self.region[i] ] = ( self.rawinputsmc[ self.regions[ "X" ][ "VARIABLE" ] ] == x )
-
+          self.select[ "MINOR" ][ self.region[i] ] = ( self.rawinputsminor[ self.regions[ "X" ][ "VARIABLE" ] ] == x )
         if y == self.regions[ "Y" ][ "SIGNAL" ] and self.regions[ "Y" ][ "INCLUSIVE" ]:
-          self.select[ "DATA" ][ self.region[i] ] &= ( self.rawinputs[ self.regions[ "Y" ][ "VARIABLE" ] ] >= y  )
+          self.select[ "DATA" ][ self.region[i] ] &= ( self.rawinputs[ self.regions[ "Y" ][ "VARIABLE" ] ] >= y )
           self.select[ "MC" ][ self.region[i] ] &= ( self.rawinputsmc[ self.regions[ "Y" ][ "VARIABLE" ] ] >= y )
+          self.select[ "MINOR" ][ self.region[i] ] &= ( self.rawinputsminor[ self.regions[ "Y" ][ "VARIABLE" ] ] >= y )
         else:
           self.select[ "DATA" ][ self.region[i] ] &= ( self.rawinputs[ self.regions[ "Y" ][ "VARIABLE" ] ] == y )
           self.select[ "MC" ][ self.region[i] ] &= ( self.rawinputsmc[ self.regions[ "Y" ][ "VARIABLE" ] ] == y )
+          self.select[ "MINOR" ][ self.region[i] ] &= ( self.rawinputsminor[ self.regions[ "Y" ][ "VARIABLE" ] ] == y )
 
         self.count[ "DATA" ][ self.region[i] ] = np.count_nonzero( self.select[ "DATA" ][ self.region[i] ] )
         self.count[ "MC" ][ self.region[i] ] = np.count_nonzero( self.select[ "MC" ][ self.region[i] ] )
+        self.count[ "MINOR" ][ self.region[i] ] = np.sum( self.rawinputsminor[ "xsecWeight" ][ self.select[ "MINOR" ][ self.region[i] ] ] ) 
         x_eq = ">=" if ( self.regions[ "X" ][ "INCLUSIVE" ] ) and ( x == self.regions[ "X" ][ "MAX" ] ) else "=="
         y_eq = ">=" if ( self.regions[ "Y" ][ "INCLUSIVE" ] ) and ( y == self.regions[ "Y" ][ "MAX" ] ) else "=="
         if verbose:
-          print( "Region {} ({} {} {}, {} {} {}): MC = {}, DATA = {} ".format(
+          print( "Region {} ({} {} {}, {} {} {}): MC = {}, DATA = {}, MINOR = {:.1f}".format(
               self.region[i], 
               self.regions[ "X" ][ "VARIABLE" ], x_eq, int( x ),
               self.regions[ "Y" ][ "VARIABLE" ], y_eq, int( y ),
-              int( self.count[ "MC" ][ self.region[i] ] ), int( self.count[ "DATA" ][ self.region[i] ] )
+              int( self.count[ "MC" ][ self.region[i] ] ), int( self.count[ "DATA" ][ self.region[i] ] ), self.count[ "MINOR" ][ self.region[i] ]
           ) )
 
         # text for plots
@@ -878,57 +884,33 @@ class ABCDnn_training(object):
         text += "$"
         self.plottext.append( text )
       
-        # format the data in a plottable/saveable manner
-        #input_data = self.normedinputs[ self.select[ "DATA" ][ self.region[i] ] ]
-        #raw_data = self.rawinputs.loc[ self.select[ "DATA" ][ self.region[i] ] ]
-        #self.rawdata.append( raw_data )
-
-        #input_mc = self.normedinputsmc[ self.select[ "MC" ][ self.region[i] ] ]
-        #raw_mc = self.rawinputsmc.loc[ self.select[ "MC" ][ self.region[i] ] ]
-        #self.rawmc.append( raw_mc )
-
-        #if self.rawmcweight is None:
-        #  mcweight = [1.] * input_mc.shape[0]
-        #else:
-        #  mcweight = self.rawmcweight[ self.select[ "MC" ][ self.region[i] ] ].flatten()
-        #self.mcweight.append( mcweight )
-
-        #n_batches = int( input_mc.shape[0] / self.minibatch )
-        #fake = []
-        #for j in range( n_batches - 1 ):
-        #  xin = input_mc[ j * self.minibatch: ( j + 1 ) * self.minibatch:, : ]
-        #  xgen = self.model.model.predict( xin )
-        #  fake.append( xgen )
-        #xin = input_mc[ ( n_batches - 1 ) * self.minibatch:, : ]
-        #xgen = self.model.model.predict( xin )
-        #fake.append( xgen )
-
-        #this_fakedata = np.vstack( fake )
-        #this_fakedata = this_fakedata * self.inputsigma[ :, :self.inputdim ] + self.inputmeans[ :, :self.inputdim ]
-        #n_fakes = this_fakedata.shape[0]
-        #this_fakedata = np.hstack( ( this_fakedata, 
-        #                          np.array( [x] * n_fakes ).reshape( ( n_fakes, 1 ) ), 
-        #                          np.array( [y] * n_fakes ).reshape( ( n_fakes, 1 ) ) 
-        #                          ) )
-        #self.fakedata.append( this_fakedata )
-
         i += 1
       
   def extended_ABCD( self ):
     # compute the norm of the raw data
     dA, dB, dC, dD, dX, dY = self.count[ "DATA" ][ "A" ], self.count[ "DATA" ][ "B" ], self.count[ "DATA" ][ "C" ], self.count[ "DATA" ][ "D" ], self.count[ "DATA" ][ "X" ], self.count[ "DATA" ][ "Y" ]
-    mD = self.count[ "MC" ][ "D" ]
-    self.data_norm = float( dB * dX * dC**2 / ( dA**2 * dY ) )
-    self.sigma_data_norm = np.sqrt( 1./dB + 1./dX + 1./dY + 4./dC + 4./dA ) * self.data_norm
-    print( "Ext. ABCD Prediction: {:.3f} pm {:.3f}".format( self.data_norm, self.sigma_data_norm ) )
-    print( "True Count: {}".format( dD ) )
-    self.transfer = float( self.data_norm ) / float( mD )
-    self.transfer_err = np.sqrt( ( self.sigma_data_norm / mD )**2 + ( self.data_norm * np.sqrt( mD ) / mD**2 )**2 )
-    print( "Transfer Factor ( Ext. ABCD / MC ) = {:.3e} pm {:.3e}".format( 
+    mA, mB, mC, mD, mX, mY = self.count[ "MINOR" ][ "A" ], self.count[ "MINOR" ][ "B" ], self.count[ "MINOR" ][ "C" ], self.count[ "MINOR" ][ "D" ], self.count[ "MINOR" ][ "X" ], self.count[ "MINOR" ][ "D" ]
+    cA = dA * self.targetSF - mA * self.minorSF
+    cB = dB * self.targetSF - mB * self.minorSF
+    cC = dC * self.targetSF - mC * self.minorSF
+    cX = dX * self.targetSF - mX * self.minorSF
+    cY = dY * self.targetSF - mY * self.minorSF
+    mcD = self.count[ "MC" ][ "D" ] * self.sourceSF
+    self.pred = float( cB * cX * cC**2 / ( cA**2 * cY ) )
+    self.sigma_pred = np.sqrt( 1./cB + 1./cX + 1./cY + 4./cC + 4./cA ) * self.pred
+    print( "Ext. ABCD Prediction: {:.3f} pm {:.3f}".format( self.pred, self.sigma_pred ) )
+    print( "MC Major Count: {}".format( mcD ) )
+    print( "MC Minor Count: {:.1f}".format( mD ) )
+    print( "Data Count: {}".format( dD ) )
+    
+    self.transfer = float( self.pred ) / float( mcD )
+    self.transfer_err = np.sqrt( ( self.sigma_pred / mcD )**2 + ( self.pred * np.sqrt( mcD ) / mcD**2 )**2 )
+    print( "Transfer Factor ( Ext. ABCD / MC ) = {:.5f} pm {:.5f}".format( 
       self.transfer,
       self.transfer_err
     ) )
-    print( ">> Saving hyper parameters" )
-    self.model.savehyperparameters( self.transfer, self.transfer_err, self.inputs, self.inputmeans, self.inputsigma )
     pass
 
+  def save_hyperparameters( self ):
+    print( ">> Saving hyper parameters" )
+    self.model.savehyperparameters( self.inputs, self.inputMean, self.inputSigma, self.transfer )

@@ -24,12 +24,19 @@ import config
 parser = ArgumentParser()
 parser.add_argument( "-s", "--source", required = True )
 parser.add_argument( "-t", "--target", required = True )
+parser.add_argument( "-b", "--minor", required = True, help = "Minor background to subtract from data. Include with --useMinor" )
+parser.add_argument( "--unblind", action = "store_true" )
+parser.add_argument( "--useMinor", action = "store_true" )
+parser.add_argument( "--transfer", action = "store_true" )
 parser.add_argument( "-m", "--tag", required = True )
 
 args = parser.parse_args()
 
-folder = "Results/"
+folder = config.params[ "MODEL" ][ "SAVEDIR" ]
 folder_contents = os.listdir( folder )
+
+if args.transfer:    
+  os.system( "eos root://cmseos.fnal.gov rm -rf /{}/{}/".format( config.targetDir[ "LPC" ].split( "//" )[2], args.tag ) )
 
 def get_region( x, y ):
   x_region = np.linspace( config.regions[ "X" ][ "MIN" ], config.regions[ "X" ][ "MAX" ], config.regions[ "X" ][ "MAX" ] - config.regions[ "X" ][ "MIN" ] + 1 )
@@ -54,11 +61,13 @@ checkpoints = [ name.split( "." )[0] for name in folder_contents if ( "EPOCH" in
 print( ">> Load the data" )
 sFile = uproot.open( args.source )
 tFile = uproot.open( args.target )
+mFile = uproot.open( args.minor )
 sTree = sFile[ "Events" ]
 tTree = tFile[ "Events" ]
+mTree = mFile[ "Events" ]
 
-variables = [ str( key ) for key in config.variables.keys() if config.variables[key]["TRANSFORM"] ]
-variables_transform = [ str( key ) for key in config.variables.keys() if config.variables[key]["TRANSFORM"] ]
+variables = [ str( key ) for key in sorted( config.variables.keys() ) if config.variables[key]["TRANSFORM"] ]
+variables_transform = [ str( key ) for key in sorted( config.variables.keys() ) if config.variables[key]["TRANSFORM"] ]
 if config.regions["Y"]["VARIABLE"] in config.variables and config.regions["X"]["VARIABLE"] in config.variables:
   variables.append( config.regions["Y"]["VARIABLE"] )
   variables.append( config.regions["X"]["VARIABLE"] )
@@ -83,41 +92,57 @@ inputs_tgt = tTree.pandas.df( variables )
 inputs_tgt_region = { region: None for region in [ "X", "Y", "A", "B", "C", "D" ] }
 print( ">> Found {} total target entries".format( inputs_tgt.shape[0] ) )
 
+inputs_mnr = mTree.pandas.df( variables + [ "xsecWeight" ] )
+inputs_mnr_region = { region: None for region in [ "X", "Y", "A", "B", "C", "D" ] }
+print( ">> Found {} total minor background entries".format( inputs_mnr.shape[0] ) )
+
 inputs_src_region["X"] = inputs_src.loc[ ( inputs_src[ config.regions["X"]["VARIABLE"] ] == x_region[0] ) & ( inputs_src[ config.regions["Y"]["VARIABLE"] ] == y_region[0] ) ]
 inputs_tgt_region["X"] = inputs_tgt.loc[ ( inputs_tgt[ config.regions["X"]["VARIABLE"] ] == x_region[0] ) & ( inputs_tgt[ config.regions["Y"]["VARIABLE"] ] == y_region[0] ) ]
+inputs_mnr_region["X"] = inputs_mnr.loc[ ( inputs_mnr[ config.regions["X"]["VARIABLE"] ] == x_region[0] ) & ( inputs_mnr[ config.regions["Y"]["VARIABLE"] ] == y_region[0] ) ]
 inputs_src_region["A"] = inputs_src.loc[ ( inputs_src[ config.regions["X"]["VARIABLE"] ] == x_region[1] ) & ( inputs_src[ config.regions["Y"]["VARIABLE"] ] == y_region[0] ) ]
 inputs_tgt_region["A"] = inputs_tgt.loc[ ( inputs_tgt[ config.regions["X"]["VARIABLE"] ] == x_region[1] ) & ( inputs_tgt[ config.regions["Y"]["VARIABLE"] ] == y_region[0] ) ]
+inputs_mnr_region["A"] = inputs_mnr.loc[ ( inputs_mnr[ config.regions["X"]["VARIABLE"] ] == x_region[1] ) & ( inputs_mnr[ config.regions["Y"]["VARIABLE"] ] == y_region[0] ) ]
 
 if config.regions["Y"]["INCLUSIVE"]:
   inputs_src_region["Y"] = inputs_src.loc[ ( inputs_src[ config.regions["X"]["VARIABLE"] ] == x_region[0] ) & ( inputs_src[ config.regions["Y"]["VARIABLE"] ] >= y_region[1] ) ]
   inputs_tgt_region["Y"] = inputs_tgt.loc[ ( inputs_tgt[ config.regions["X"]["VARIABLE"] ] == x_region[0] ) & ( inputs_tgt[ config.regions["Y"]["VARIABLE"] ] >= y_region[1] ) ]
+  inputs_mnr_region["Y"] = inputs_mnr.loc[ ( inputs_mnr[ config.regions["X"]["VARIABLE"] ] == x_region[0] ) & ( inputs_mnr[ config.regions["Y"]["VARIABLE"] ] >= y_region[1] ) ]
   inputs_src_region["C"] = inputs_src.loc[ ( inputs_src[ config.regions["X"]["VARIABLE"] ] == x_region[1] ) & ( inputs_src[ config.regions["Y"]["VARIABLE"] ] >= y_region[1] ) ]
   inputs_tgt_region["C"] = inputs_tgt.loc[ ( inputs_tgt[ config.regions["X"]["VARIABLE"] ] == x_region[1] ) & ( inputs_tgt[ config.regions["Y"]["VARIABLE"] ] >= y_region[1] ) ]
+  inputs_mnr_region["C"] = inputs_mnr.loc[ ( inputs_mnr[ config.regions["X"]["VARIABLE"] ] == x_region[1] ) & ( inputs_mnr[ config.regions["Y"]["VARIABLE"] ] >= y_region[1] ) ]
 else:
   inputs_src_region["Y"] = inputs_src.loc[ ( inputs_src[ config.regions["X"]["VARIABLE"] ] == x_region[0] ) & ( inputs_src[ config.regions["Y"]["VARIABLE"] ] == y_region[1] ) ]
   inputs_tgt_region["Y"] = inputs_tgt.loc[ ( inputs_tgt[ config.regions["X"]["VARIABLE"] ] == x_region[0] ) & ( inputs_tgt[ config.regions["Y"]["VARIABLE"] ] == y_region[1] ) ]
+  inputs_mnr_region["Y"] = inputs_mnr.loc[ ( inputs_mnr[ config.regions["X"]["VARIABLE"] ] == x_region[0] ) & ( inputs_mnr[ config.regions["Y"]["VARIABLE"] ] == y_region[1] ) ]
   inputs_src_region["C"] = inputs_src.loc[ ( inputs_src[ config.regions["X"]["VARIABLE"] ] == x_region[1] ) & ( inputs_src[ config.regions["Y"]["VARIABLE"] ] == y_region[1] ) ]
   inputs_tgt_region["C"] = inputs_tgt.loc[ ( inputs_tgt[ config.regions["X"]["VARIABLE"] ] == x_region[1] ) & ( inputs_tgt[ config.regions["Y"]["VARIABLE"] ] == y_region[1] ) ]
+  inputs_mnr_region["C"] = inputs_mnr.loc[ ( inputs_mnr[ config.regions["X"]["VARIABLE"] ] == x_region[1] ) & ( inputs_mnr[ config.regions["Y"]["VARIABLE"] ] == y_region[1] ) ]
 
 if config.regions["X"]["INCLUSIVE"]:
   inputs_src_region["B"] = inputs_src.loc[ ( inputs_src[ config.regions["X"]["VARIABLE"] ] >= x_region[2] ) & ( inputs_src[ config.regions["Y"]["VARIABLE"] ] == y_region[0] ) ]
   inputs_tgt_region["B"] = inputs_tgt.loc[ ( inputs_tgt[ config.regions["X"]["VARIABLE"] ] >= x_region[2] ) & ( inputs_tgt[ config.regions["Y"]["VARIABLE"] ] == y_region[0] ) ]
+  inputs_mnr_region["B"] = inputs_mnr.loc[ ( inputs_mnr[ config.regions["X"]["VARIABLE"] ] >= x_region[2] ) & ( inputs_mnr[ config.regions["Y"]["VARIABLE"] ] == y_region[0] ) ]
 else:
   inputs_src_region["B"] = inputs_src.loc[ ( inputs_src[ config.regions["X"]["VARIABLE"] ] == x_region[2] ) & ( inputs_src[ config.regions["Y"]["VARIABLE"] ] == y_region[0] ) ]
   inputs_tgt_region["B"] = inputs_tgt.loc[ ( inputs_tgt[ config.regions["X"]["VARIABLE"] ] == x_region[2] ) & ( inputs_tgt[ config.regions["Y"]["VARIABLE"] ] == y_region[0] ) ]
+  inputs_mnr_region["B"] = inputs_mnr.loc[ ( inputs_mnr[ config.regions["X"]["VARIABLE"] ] == x_region[2] ) & ( inputs_mnr[ config.regions["Y"]["VARIABLE"] ] == y_region[0] ) ]
 
 if config.regions["X"]["INCLUSIVE"] and config.regions["Y"]["INCLUSIVE"]:
   inputs_src_region["D"] = inputs_src.loc[ ( inputs_src[ config.regions["X"]["VARIABLE"] ] >= x_region[2] ) & ( inputs_src[ config.regions["Y"]["VARIABLE"] ] >= y_region[1] ) ]
   inputs_tgt_region["D"] = inputs_tgt.loc[ ( inputs_tgt[ config.regions["X"]["VARIABLE"] ] >= x_region[2] ) & ( inputs_tgt[ config.regions["Y"]["VARIABLE"] ] >= y_region[1] ) ]
+  inputs_mnr_region["D"] = inputs_mnr.loc[ ( inputs_mnr[ config.regions["X"]["VARIABLE"] ] >= x_region[2] ) & ( inputs_mnr[ config.regions["Y"]["VARIABLE"] ] >= y_region[1] ) ]
 elif config.regions["X"]["INCLUSIVE"] and not config.regions["Y"]["INCLUSIVE"]:
   inputs_src_region["D"] = inputs_src.loc[ ( inputs_src[ config.regions["X"]["VARIABLE"] ] >= x_region[2] ) & ( inputs_src[ config.regions["Y"]["VARIABLE"] ] == y_region[1] ) ]
   inputs_tgt_region["D"] = inputs_tgt.loc[ ( inputs_tgt[ config.regions["X"]["VARIABLE"] ] >= x_region[2] ) & ( inputs_tgt[ config.regions["Y"]["VARIABLE"] ] == y_region[1] ) ]
+  inputs_mnr_region["D"] = inputs_mnr.loc[ ( inputs_mnr[ config.regions["X"]["VARIABLE"] ] >= x_region[2] ) & ( inputs_mnr[ config.regions["Y"]["VARIABLE"] ] == y_region[1] ) ]
 elif not config.regions["X"]["INCLUSIVE"] and config.regions["Y"]["INCLUSIVE"]:
   inputs_src_region["D"] = inputs_src.loc[ ( inputs_src[ config.regions["X"]["VARIABLE"] ] == x_region[2] ) & ( inputs_src[ config.regions["Y"]["VARIABLE"] ] >= y_region[1] ) ]
   inputs_tgt_region["D"] = inputs_tgt.loc[ ( inputs_tgt[ config.regions["X"]["VARIABLE"] ] == x_region[2] ) & ( inputs_tgt[ config.regions["Y"]["VARIABLE"] ] >= y_region[1] ) ]
+  inputs_mnr_region["D"] = inputs_mnr.loc[ ( inputs_mnr[ config.regions["X"]["VARIABLE"] ] == x_region[2] ) & ( inputs_mnr[ config.regions["Y"]["VARIABLE"] ] >= y_region[1] ) ]
 else:
   inputs_src_region["D"] = inputs_src.loc[ ( inputs_src[ config.regions["X"]["VARIABLE"] ] == x_region[2] ) & ( inputs_src[ config.regions["Y"]["VARIABLE"] ] == y_region[1] ) ]
   inputs_tgt_region["D"] = inputs_tgt.loc[ ( inputs_tgt[ config.regions["X"]["VARIABLE"] ] == x_region[2] ) & ( inputs_tgt[ config.regions["Y"]["VARIABLE"] ] == y_region[1] ) ]
+  inputs_mnr_region["D"] = inputs_mnr.loc[ ( inputs_mnr[ config.regions["X"]["VARIABLE"] ] == x_region[2] ) & ( inputs_mnr[ config.regions["Y"]["VARIABLE"] ] == y_region[1] ) ]
 
 print( ">> Yields in each region:" )
 for region in inputs_src_region:
@@ -154,7 +179,7 @@ NAF = abcdnn.NAF(
 NAF.load_weights( os.path.join( folder, args.tag ) )
 
 for region in tqdm.tqdm( predictions_best ):
-  NAF_predict = np.asarray( NAF.predict( np.asarray( inputs_nrm_region[ region ] ) ) )
+  NAF_predict = np.asarray( NAF.predict( np.asarray( inputs_nrm_region[ region ] )[::2] ) )
   predictions_best[ region ] = NAF_predict * inputsigmas[0:2] + inputmeans[0:2] 
  
   
@@ -213,57 +238,60 @@ images = { variable: [] for variable in variables_transform }
 def ratio_err( x, xerr, y, yerr ):
   return np.sqrt( ( yerr * x / y**2 )**2 + ( xerr / y )**2 )
 
-def plot_hist( ax, variable, x, y, epoch, mc_pred, mc_true, data, bins ):
-  mc_pred_hist = { 
-    "TRUE": np.nan_to_num( np.histogram( mc_pred, bins = bins, density = False ) ),
-    "NORM": np.nan_to_num( np.histogram( mc_pred, bins = bins, density = True ) )
-  }
-  mc_pred_scale = np.nan_to_num( mc_pred_hist[ "TRUE" ][0] / mc_pred_hist[ "NORM" ][0] )
+def plot_hist( ax, variable, x, y, epoch, mc_pred, mc_true, mc_minor, weights_minor, data, bins, useMinor, blind ):
+  mc_pred_hist = np.histogram( np.clip( mc_pred, bins[0], bins[-1] ), bins = bins, density = False )
+  mc_pred_scale = float( np.sum( mc_pred_hist[0] ) )
   
-  mc_true_hist = {
-    "TRUE": np.nan_to_num( np.histogram( mc_true, bins = bins, density = False ) ),
-    "NORM": np.nan_to_num( np.histogram( mc_true, bins = bins, density = True ) )
-  }
-  mc_true_scale = np.nan_to_num( mc_true_hist[ "TRUE" ][0] / mc_true_hist[ "NORM" ][0] )
+  mc_true_hist = np.histogram( mc_true, bins = bins, density = False )
+  mc_true_scale = float( np.sum( mc_true_hist[0] ) )
 
-  data_hist = {
-    "TRUE": np.nan_to_num( np.histogram( data, bins = bins, density = False ) ),
-    "NORM": np.nan_to_num( np.histogram( data, bins = bins, density = True ) )
-  }
-  data_scale = np.nan_to_num( data_hist[ "TRUE" ][0] / data_hist[ "NORM" ][0] )
-  
+  mc_minor_hist = np.histogram( mc_minor, bins = bins, weights = weights_minor, density = False )
+  mc_minor_scale = len(mc_minor)
+
+  data_hist = np.histogram( data, bins = bins, density = False )
+  if useMinor:
+    data_mod = data_hist[0] - mc_minor_hist[0]
+  else:
+    data_mod = data_hist[0]
+  for i in range( len( data_mod ) ):
+    if data_mod[i] < 0: data_mod[i] = 0
+  data_mod_scale = float( np.sum(data_mod) )
+
   # plot the data first
-  ax.errorbar(
-    0.5 * ( data_hist[ "NORM" ][1][1:] + data_hist[ "NORM" ][1][:-1] ),
-    data_hist[ "NORM" ][0], yerr = np.sqrt( data_hist[ "TRUE" ][0] ) / data_scale,
-    label = "Data",
-    marker = "o", markersize = 3, markerfacecolor = "black", markeredgecolor = "black",
-    elinewidth = 1, ecolor = "black" , capsize = 2, lw = 0 
-  )
+  if not blind:
+    ax.errorbar(
+      0.5 * ( data_hist[1][1:] + data_hist[1][:-1] ),
+      data_mod / data_mod_scale, yerr = np.sqrt( data_mod ) / data_mod_scale,
+      label = "Target - Minor" if args.useMinor else "Target",
+      marker = "o", markersize = 3, markerfacecolor = "black", markeredgecolor = "black",
+      elinewidth = 1, ecolor = "black" , capsize = 2, lw = 0 
+    )
   # plot the mc
   ax.errorbar(
-    0.5 * ( mc_true_hist[ "NORM" ][1][1:] + mc_true_hist[ "NORM" ][1][:-1] ),
-    mc_true_hist[ "NORM" ][0], yerr = np.sqrt( mc_true_hist[ "TRUE" ][0] ) / mc_true_scale,
-    label = "MC",
+    0.5 * ( mc_true_hist[1][1:] + mc_true_hist[1][:-1] ),
+    mc_true_hist[0] / mc_true_scale, yerr = np.sqrt( mc_true_hist[0] ) / mc_true_scale,
+    label = "Source",
     marker = ",", drawstyle = "steps-mid", lw = 2, alpha = 0.7, color = "green"
   )
   # plot the predicted
-  ax.hist(
-    mc_pred, bins = bins, density = True,
+  ax.fill_between(
+    0.5 * ( mc_pred_hist[1][1:] + mc_pred_hist[1][:-1] ),
+    y2 = np.zeros( len( mc_pred_hist[0] ) ),
+    y1 = mc_pred_hist[0] / mc_pred_scale, step = "mid",
     label = "ABCDnn",
-    facecolor = "red", ec = "black", histtype = "stepfilled", alpha = 0.5,
+    color = "red", alpha = 0.5,
   )
   ax.fill_between(
-    0.5 * ( mc_pred_hist[ "NORM" ][1][1:] + mc_pred_hist[ "NORM" ][1][:-1] ),
-    y1 = mc_pred_hist[ "NORM" ][0] + np.sqrt( mc_pred_hist[ "TRUE" ][0] ) / mc_pred_scale,
-    y2 = mc_pred_hist[ "NORM" ][0] - np.sqrt( mc_pred_hist[ "TRUE" ][0] ) / mc_pred_scale,
+    0.5 * ( mc_pred_hist[1][1:] + mc_pred_hist[1][:-1] ),
+    y1 = ( mc_pred_hist[0] + np.sqrt( mc_pred_hist[0] ) ) / mc_pred_scale,
+    y2 = ( mc_pred_hist[0] - np.sqrt( mc_pred_hist[0] ) ) / mc_pred_scale,
     interpolate = False, step = "mid",
     color = "red", alpha = 0.2
   )
   
   ax.set_xlim( config.variables[ variable ][ "LIMIT" ][0], config.variables[ variable ][ "LIMIT" ][1] )
-  y_max = max( [ max( data_hist[ "NORM" ][0] ), max( mc_true_hist[ "NORM" ][0] ) ] )
-  ax.set_ylim( 0, 1.3 * y_max )
+  y_max = max( [ max( data_mod ) / data_mod_scale, max( mc_true_hist[0] ) / mc_true_scale ] )
+  ax.set_ylim( 0, 1.4 * y_max )
   ax.set_yscale( config.params[ "PLOT" ][ "YSCALE" ] )
   ax.axes.yaxis.set_visible(False)
   ax.axes.xaxis.set_visible(False)
@@ -285,75 +313,73 @@ def plot_hist( ax, variable, x, y, epoch, mc_pred, mc_true, data, bins ):
     0.02, 0.95, str(epoch),
     ha = "left", va = "top", transform = ax.transAxes
   )
-  ax.legend( loc = "upper right" ,fontsize = 8 )
+  ax.legend( loc = "upper right", ncol = 2, fontsize = 8 )
 
+def plot_ratio( ax, variable, x, y, mc_pred, mc_true, mc_minor, weights_minor, data, bins, useMinor, blind ):
+  mc_pred_hist = np.histogram( mc_pred, bins = bins, density = False )
+  mc_pred_scale = float( len(mc_pred) )
+  
+  mc_true_hist = np.histogram( mc_true, bins = bins, density = False )
+  mc_true_scale = float( len(mc_true) )
 
-def plot_ratio( ax, variable, x, y, mc_pred, mc_true, data, bins):
-  mc_pred_hist = {
-    "TRUE": np.histogram( mc_pred, bins = bins, density = False ),
-    "NORM": np.histogram( mc_pred, bins = bins, density = True )
-  }
-  mc_pred_scale = mc_pred_hist[ "TRUE" ][0] / mc_pred_hist[ "NORM" ][0]
+  mc_minor_hist = np.histogram( mc_minor, bins = bins, weights = weights_minor, density = False )
+  mc_minor_scale = float( len(mc_minor) )
 
-  mc_true_hist = {                        
-    "TRUE": np.histogram( mc_true, bins = bins, density = False ),
-    "NORM": np.histogram( mc_true, bins = bins, density = True )
-  }
-  mc_true_scale = mc_true_hist[ "TRUE" ][0] / mc_true_hist[ "NORM" ][0]
-
-  data_hist = {
-    "TRUE": np.histogram( data, bins = bins, density = False ),
-    "NORM": np.histogram( data, bins = bins, density = True )
-  }
-  data_scale = data_hist[ "TRUE" ][0] / data_hist[ "NORM" ][0]  
+  data_hist = np.histogram( data, bins = bins, density = False )
+  if useMinor:
+    data_mod = data_hist[0] - mc_minor_hist[0]
+  else:
+    data_mod = data_hist[0]
+  data_mod_scale = np.sum(data_mod)
   
   ratio = []
   ratio_std = []
-  for i in range( len( data_hist[ "TRUE" ][0] ) ):
-    if data_hist[ "TRUE" ][0][i] == 0 or mc_pred_hist[ "TRUE" ][0][i] == 0: 
+  for i in range( len( data_hist[0] ) ):
+    if data_mod[i] == 0 or mc_pred_hist[0][i] == 0: 
       ratio.append(0)
       ratio_std.append(0)
     else:
-      ratio.append( ( mc_pred_hist[ "TRUE" ][0][i] / mc_pred_scale[i] ) / ( data_hist[ "TRUE" ][0][i] / data_scale[i] ) )
+      ratio.append( ( data_mod[i] / float( data_mod_scale ) /  ( mc_pred_hist[0][i] / float( mc_pred_scale ) ) ) )
       ratio_std.append( ratio_err(
-        mc_pred_hist[ "TRUE" ][0][i],
-        np.sqrt( mc_pred_hist[ "TRUE" ][0][i] ),
-        data_hist[ "TRUE" ][0][i],
-        np.sqrt( data_hist[ "TRUE" ][0][i] )
-      ) * ( data_scale[i] / mc_pred_scale[i] ) )
-
-  ax.scatter(
-    0.5 * ( data_hist[ "NORM" ][1][1:] + data_hist[ "NORM" ][1][:-1] ),
-    ratio, 
-    linewidth = 0, marker = "o", 
-    color = "black", zorder = 3
-  )
-  ax.fill_between(
-    0.5 * ( data_hist[ "NORM" ][1][1:] + data_hist[ "NORM" ][1][:-1] ),
-    y1 = np.array( ratio ) + np.array( ratio_std ),
-    y2 = np.array( ratio ) - np.array( ratio_std ),
-    interpolate = False, step = "mid",
-    color = "gray", alpha = 0.2
-  )
+        mc_pred_hist[0][i],
+        np.sqrt( mc_pred_hist[0][i] ),
+        data_mod[i],
+        np.sqrt( data_mod[i] )
+      ) * ( data_mod_scale / mc_pred_scale ) )
+  if not blind:
+    ax.scatter(
+      0.5 * ( data_hist[1][1:] + data_hist[1][:-1] ),
+      ratio, 
+      linewidth = 0, marker = "o", 
+      color = "black", zorder = 3
+    )
+    ax.fill_between(
+      0.5 * ( data_hist[1][1:] + data_hist[1][:-1] ),
+      y1 = np.array( ratio ) + np.array( ratio_std ),
+      y2 = np.array( ratio ) - np.array( ratio_std ),
+      interpolate = False, step = "mid",
+      color = "gray", alpha = 0.2
+    )
   ax.axhline(
     y = 1.0, color = "r", linestyle = "-", zorder = 1
   )
 
   ax.set_xlabel( "${}$".format( config.variables[ variable ][ "LATEX" ] ), ha = "right", x = 1.0, fontsize = 10 )
   ax.set_xlim( config.variables[ variable ][ "LIMIT" ][0], config.variables[ variable ][ "LIMIT" ][1] )
-  ax.set_ylabel( "ABCDnn/Data", ha = "right", y = 1.0, fontsize = 8 )
-  ax.set_ylim( 0, 2 )
-  ax.set_yticks( [ 0.5, 1.0, 1.5 ] )
+  ax.set_ylabel( "Target/ABCDnn", ha = "right", y = 1.0, fontsize = 8 )
+  ax.set_ylim( config.params[ "PLOT" ][ "RATIO" ][0], config.params[ "PLOT" ][ "RATIO" ][1] )
+  ax.set_yticks( [ 0.80, 0.90, 1.0, 1.10, 1.20 ] )
   ax.tick_params( axis = "both", labelsize = 8 )
   if x != 2: ax.axes.xaxis.set_visible(False)
 
-os.system( "mkdir -vp Results/{}".format( args.tag ) )
+os.system( "mkdir -vp {}/{}".format( folder, args.tag ) )
 print( "Plotting best trained model" )
 for i, variable in enumerate( variables_transform ):
   bins = np.linspace( config.variables[ variable ][ "LIMIT" ][0], config.variables[ variable ][ "LIMIT" ][1], config.params[ "PLOT" ][ "NBINS" ] )
   fig, axs = plt.subplots( 6, 2, figsize = (9,12), gridspec_kw = { "height_ratios": [3,1,3,1,3,1] } )
   for x in range(6):
     for y in range(2):
+      blind = True if ( x == 5 and y == 1 and not args.unblind ) else False
       if x % 2 == 0:
         plot_hist(
           ax = axs[x,y],
@@ -362,8 +388,12 @@ for i, variable in enumerate( variables_transform ):
           epoch = "BEST",
           mc_pred = np.asarray( predictions_best[ region_key[ int(x/2) ][y] ] )[:,i],
           mc_true = inputs_src_region[ region_key[int(x/2)][y] ][ variables_transform ].to_numpy()[:,i],
+          mc_minor = inputs_mnr_region[ region_key[int(x/2)][y] ][ variables_transform ].to_numpy()[:,i],
+          weights_minor = inputs_mnr_region[ region_key[int(x/2)][y] ][ [ "xsecWeight" ] ].to_numpy()[:,0],
           data = inputs_tgt_region[ region_key[int(x/2)][y] ][ variables_transform ].to_numpy()[:,i],
-          bins = bins
+          bins = bins,
+          useMinor = args.useMinor,
+          blind = blind
         )
       else:
         plot_ratio(
@@ -372,8 +402,12 @@ for i, variable in enumerate( variables_transform ):
           x = int((x-1)/2), y = y,
           mc_pred = np.asarray( predictions_best[ region_key[ int((x-1)/2) ][y] ] )[:,i],
           mc_true = inputs_src_region[ region_key[int((x-1)/2)][y] ][ variables_transform ].to_numpy()[:,i],
+          mc_minor = inputs_mnr_region[ region_key[int((x-1)/2)][y] ][ variables_transform ].to_numpy()[:,i],
+          weights_minor = inputs_mnr_region[ region_key[int((x-1)/2)][y] ][ [ "xsecWeight" ] ].to_numpy()[:,0],
           data = inputs_tgt_region[ region_key[int((x-1)/2)][y] ][ variables_transform ].to_numpy()[:,i],
-          bins = bins
+          bins = bins,
+          useMinor = args.useMinor,
+          blind = blind
         )
       position_old = axs[x,y].get_position()
       position_new = axs[x-1,y].get_position()
@@ -382,7 +416,7 @@ for i, variable in enumerate( variables_transform ):
       points_old[1][1] = points_new[0][1]
       position_old.set_points( points_old )
       axs[x,y].set_position( position_old )
-  plt.savefig( "Results/{}/{}_{}.png".format( args.tag, args.tag, variable ) )  
+  plt.savefig( "{}/{}/{}_{}.png".format( folder, args.tag, args.tag, variable ) )  
   plt.close()
 
 print( "Plotting models per epoch:" )
@@ -393,6 +427,7 @@ for epoch in sorted( predictions.keys() ):
     fig, axs = plt.subplots( 6, 2, figsize = (9,12), gridspec_kw = { "height_ratios": [3,1,3,1,3,1] } )
     for x in range( 6 ):
       for y in range( 2 ):
+        blind = True if ( x >= 4 and y == 1 and not args.unblind ) else False
         if x % 2 == 0: 
           plot_hist( 
             ax = axs[x,y], 
@@ -401,8 +436,12 @@ for epoch in sorted( predictions.keys() ):
             epoch = epoch,
             mc_pred = np.asarray( predictions[ epoch ][ region_key[int(x/2)][y] ] )[:,i],
             mc_true = inputs_src_region[ region_key[int(x/2)][y] ][ variables_transform ].to_numpy()[:,i],
+            mc_minor = inputs_mnr_region[ region_key[int(x/2)][y] ][ variables_transform ].to_numpy()[:,i],
+            weights_minor = inputs_mnr_region[ region_key[int((x)/2)][y] ][ [ "xsecWeight" ] ].to_numpy()[:,0],
             data = inputs_tgt_region[ region_key[int(x/2)][y] ][ variables_transform ].to_numpy()[:,i],
-            bins = bins
+            bins = bins,
+            useMinor = args.useMinor,
+            blind = blind
           )
         else: 
           plot_ratio( 
@@ -411,8 +450,12 @@ for epoch in sorted( predictions.keys() ):
             x = int((x-1)/2), y = y, 
             mc_pred = np.asarray( predictions[ epoch ][ region_key[int((x-1)/2)][y] ] )[:,i],
             mc_true = inputs_src_region[ region_key[int((x-1)/2)][y] ][ variables_transform ].to_numpy()[:,i],
+            mc_minor = inputs_mnr_region[ region_key[int((x-1)/2)][y] ][ variables_transform ].to_numpy()[:,i],
+            weights_minor = inputs_mnr_region[ region_key[int((x-1)/2)][y] ][ [ "xsecWeight" ] ].to_numpy()[:,0],
             data = inputs_tgt_region[ region_key[int((x-1)/2)][y] ][ variables_transform ].to_numpy()[:,i],
-            bins = bins 
+            bins = bins,
+            useMinor = args.useMinor,
+            blind = blind
           )
           position_old = axs[x,y].get_position()
           position_new = axs[x-1,y].get_position()
@@ -422,12 +465,15 @@ for epoch in sorted( predictions.keys() ):
           position_old.set_points( points_old )
           axs[x,y].set_position( position_old )
 
-    plt.savefig( "Results/{}/{}_{}_EPOCH{}.png".format( args.tag, args.tag, variable, epoch ) )
-    images[ variable ].append( imageio.imread( "Results/{}/{}_{}_EPOCH{}.png".format( args.tag, args.tag, variable, epoch ) ) )
+    plt.savefig( "{}/{}/{}_{}_EPOCH{}.png".format( folder, args.tag, args.tag, variable, epoch ) )
+    images[ variable ].append( imageio.imread( "{}/{}/{}_{}_EPOCH{}.png".format( folder, args.tag, args.tag, variable, epoch ) ) )
     plt.close()
+
 try:
   print( "[DONE] {} training GIF completed: {}_{}.gif, {}_{}.gif".format( args.tag, args.tag, variables_transform[0], args.tag, variables_transform[1] ) )
 except:
   print( "[DONE] {} training GIF completed: {}_{}.gif".format( args.tag, args.tag, variables_transform[0] ) )
 for variable in variables_transform:
-  imageio.mimsave( "Results/{}_{}.gif".format( args.tag, variable ), images[ variable ], duration = 1 )
+  imageio.mimsave( "{}/{}/{}_{}.gif".format( folder, args.tag, args.tag, variable ), images[ variable ], duration = 1 )
+  if args.transfer:
+    os.system( "xrdcp -rfp {}/{}/ {}/{}/".format( folder, args.tag, config.targetDir[ "LPC" ], args.tag ) )

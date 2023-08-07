@@ -13,6 +13,7 @@ import uproot
 import tqdm
 from argparse import ArgumentParser
 from json import loads as load_json
+from json import dumps as dump_json
 from array import array
 import ROOT
 
@@ -31,8 +32,10 @@ parser.add_argument( "-b", "--batch", default = "10", help = "Number of batches 
 parser.add_argument( "-n", "--size", default = "1028", help = "Size of each batch for computing MMD loss" )
 parser.add_argument( "-r", "--region", default = "D", help = "Region to evaluate (X,Y,A,B,C,D)" )
 parser.add_argument( "--bayesian", action = "store_true", help = "Run Bayesian approximation to estimate model uncertainty" )
+parser.add_argument( "--loss", action = "store_true", help = "Calculate the MMD loss" )
 parser.add_argument( "--closure", action = "store_true", help = "Get the closure uncertainty (i.e. percent difference between predicted and true yield)" )
-parser.add_argument( "--stat", action = "store_true", help = "Get the statistical uncertainty of predicted yield" )
+parser.add_argument( "--yields", action = "store_true", help = "Get the statistical uncertainty of predicted yield" )
+parser.add_argument( "--stats", action = "store_true", help = "Get mean and RMS of ABCDnn output and add to .json" )
 parser.add_argument( "--verbose", action = "store_true" )
 args = parser.parse_args()
 
@@ -193,6 +196,22 @@ def non_closure_eABCD( source_data, target_data ):
   print( "[Non-Closure ABCD] Observed: {}, Expected: {:.2f}, % Difference: {:.2f}".format( oYield, pYield, syst ) )
   return syst
 
+def get_stats( model, source, region, bSize, tag ):
+  sBatch, tbatch = get_batch( source, source, bSize, region ) 
+  sPred = model( sBatch.astype( "float32" ) )
+  with open( os.path.join( "Results/", tag + ".json" ), "r+" ) as f:
+    params = load_json( f.read() )
+  means = np.hstack( [ float( mean ) for mean in params[ "INPUTMEANS" ] ] )
+  sigmas = np.hstack( [ float( sigma ) for sigma in params [ "INPUTSIGMAS" ] ] )
+  mean_pred = np.mean( sPred * sigmas[0:2] + means[0:2], axis = 0 )
+  std_pred = np.std( sPred * sigmas[0:2] + means[0:2], axis = 0 )
+  params.update( { "SIGNAL_MEAN": [ str(mean) for mean in mean_pred ] } )
+  params.update( { "SIGNAL_SIGMA":  [ str(std) for std in std_pred ] } )
+  with open( "Results/{}.json".format( tag ), "w" ) as f:
+    f.write( dump_json( params, indent = 2 ) ) 
+  print( "[INFO] Mean of {} in region {}: {}".format( tag, region, mean_pred ) )
+  print( "[INFO] RMS of {} in region {}: {}".format( tag, region, std_pred ) )
+
 def main():
   print( "[START] Evaluating model {} on {} batches of size {}".format( args.tag, args.batch, args.size ) )
   if args.bayesian: print( "[OPTION] Running with dropout on inference for Bayesian Approximation of model uncertainty" )
@@ -200,12 +219,15 @@ def main():
     params = load_json( f.read() )
   source_data, target_data = prepare_data( args.source, args.target, config.variables, config.regions, params )
   NAF = prepare_model( args.tag, params )
-  mean, std = get_loss( NAF, source_data, target_data, args.region, int( args.size ), int( args.batch ), args.bayesian, False )
+  if args.loss:
+    mean, std = get_loss( NAF, source_data, target_data, args.region, int( args.size ), int( args.batch ), args.bayesian, False )
+    print( "[DONE] MMD Loss in Region {}: {:.5f} pm {:.5f}".format( args.region, mean, std ) )
   if args.closure:
     _, _, _, _ = get_loss( NAF, source_data, target_data, args.region, int( args.size ), int( args.batch ), args.bayesian, True )
     _ = non_closure_eABCD( source_data, target_data )
-  if args.stat: 
+  if args.yields: 
     _, _, _ = extended_ABCD( target_data )
-  print( "[DONE] MMD Loss in Region {}: {:.5f} pm {:.5f}".format( args.region, mean, std ) )
+  if args.stats:
+    get_stats( NAF, source_data, args.region, int( args.size ), args.tag )
 
 main()
