@@ -1,5 +1,6 @@
 import os
 from json import loads as load_json
+from json import dumps as dump_json
 from argparse import ArgumentParser
 
 parser = ArgumentParser()
@@ -15,6 +16,11 @@ if os.path.exists( "Results/{}.index".format( args.tag ) ) and os.path.exists( "
     os.system( "mv Results/{0}_EPOCH{1}.index Results/{0}.index".format( args.tag, args.epoch ) )
     os.system( "mv Results/{0}_EPOCH{1}.data-00000-of-00001 Results/{0}.data-00000-of-00001".format( args.tag, args.epoch ) )
     os.system( "rm Results/{}_EPOCH*".format( args.tag ) )
+    with open( os.path.join( "Results/", args.tag + ".json" ), "r+" ) as f:
+      params = load_json( f.read() )
+    params.update( { "EPOCH": args.epoch } )
+    with open( os.path.join( "Results/", args.tag + ".json" ), "w" ) as f:
+      f.write( dump_json( params, indent = 2 ) )
   else:
     quit( "[ERROR] The epoch you specified does not exist, quitting..." )
 

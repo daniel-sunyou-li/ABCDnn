@@ -23,18 +23,18 @@ sampleDir = {
 }
 
 variables = {
-  #"AK4HT": {
-  #  "CATEGORICAL": False,
-  #  "TRANSFORM": True,
-  #  "LIMIT": [350.,2500.],
-  #  "LATEX": "H_T\ (GeV)"
-  #},
-  "DNN_1to40_nJ4pnB1p": {
+  "AK4HT": {
     "CATEGORICAL": False,
     "TRANSFORM": True,
-    "LIMIT": [0.,1.],
-    "LATEX": "DNN"
+    "LIMIT": [350.,4000.],
+    "LATEX": "H_T\ (GeV)"
   },
+  #"DNN_1to40_nJ4pnB1p": {
+  #  "CATEGORICAL": False,
+  #  "TRANSFORM": True,
+  #  "LIMIT": [0.,1.],
+  #  "LATEX": "DNN"
+  #},
   "DNN_1to40_Run2_nJ4pnB1p": {
     "CATEGORICAL": False,
     "TRANSFORM": True,
@@ -58,7 +58,7 @@ variables = {
 selection = { # edit these accordingly
   "NJets_JetSubCalc": { "VALUE": [ 4 ], "CONDITION": [ ">=" ] },
   "NJetsCSV_JetSubCalc": { "VALUE": [ 1 ], "CONDITION": [ ">=" ] },
-  "NresolvedTops1pFake": { "VALUE": [ 0 ], "CONDITION": [ "==" ] },
+  "NresolvedTops1pFake": { "VALUE": [ 1 ], "CONDITION": [ ">=" ] },
   "corr_met_MultiLepCalc": { "VALUE": [ 20. ], "CONDITION": [ ">" ] },
   "MT_lepMet": { "VALUE": [ 0 ], "CONDITION": [ ">" ] },
   "corr_met_MultiLepCalc + 0.667 * MT_lepMet": { "VALUE": [ 0. ], "CONDITION": [ ">" ] },
@@ -88,18 +88,18 @@ regions = {
 params = {
   "MODEL": { # parameters for setting up the NAF model
     "NODES_COND": 8,
-    "HIDDEN_COND": 3,
-    "NODES_TRANS": 4,
+    "HIDDEN_COND": 1,
+    "NODES_TRANS": 8,
     "LRATE": 1e-2,
-    "DECAY": 0.05,
-    "GAP": 50,
+    "DECAY": 0.1,
+    "GAP": 200,
     "DEPTH": 1,
     "REGULARIZER": "NONE", # DROPOUT, BATCHNORM, ALL, NONE
-    "INITIALIZER": "he_normal", # he_normal, RandomNormal
+    "INITIALIZER": "RandomNormal", # he_normal, RandomNormal
     "ACTIVATION": "swish", # softplus, relu, swish
     "BETA1": 0.9,
     "BETA2": 0.999,
-    "MMD SIGMAS": [0.05,0.08,0.1],
+    "MMD SIGMAS": [0.05,0.1,0.2],
     "MMD WEIGHTS": None,
     "MINIBATCH": 2**6,
     "RETRAIN": True,
@@ -110,22 +110,22 @@ params = {
     "VERBOSE": True  
   },
   "TRAIN": {
-    "EPOCHS": 3000,
+    "EPOCHS": 2000,
     "PATIENCE": 0,
     "MONITOR": 100,
-    "MONITOR THRESHOLD": 1000,  # only save model past this epoch
+    "MONITOR THRESHOLD": 0,  # only save model past this epoch
     "PERIODIC SAVE": True,   # saves model at each epoch step according to "MONITOR" 
     "SHOWLOSS": True,
     "EARLY STOP": False,      # early stop if validation loss begins diverging
   },
   "PLOT": {
     "RATIO": [ 0.75, 1.25 ], # y limits for the ratio plot
-    "YSCALE": "linear",   # which y-scale plots to produce
-    "NBINS": 21,            # histogram x-bins
-    "ERRORBARS": True,      # include errorbars on hist
-    "NORMED": True,         # normalize histogram counts/density
-    "SAVE": False,          # save the plots as png
-    "PLOT_KS": True,        # include the KS p-value in plots
+    "YSCALE": "linear",      # which y-scale plots to produce
+    "NBINS": 51,             # histogram x-bins
+    "ERRORBARS": True,       # include errorbars on hist
+    "NORMED": True,          # normalize histogram counts/density
+    "SAVE": False,           # save the plots as png
+    "PLOT_KS": True,         # include the KS p-value in plots
   }
 }
         
