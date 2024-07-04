@@ -159,9 +159,9 @@ def fill_tree( sample, dLocal ):
   def shift_tail( input_, mean_, sigma_, const_, shift_ ):
     # const_ represents the maximum value the tails can shift
     if shift_ == "UP":
-      return input_ + const_ * input_ * ( 1 - input_ ) * ( 1 - np.exp( -( ( input_ - mean_ ) / sigma_ )**2 ) ) 
+      return input_ + const_ * input_ * ( 1 - input_ ) * ( 1 - np.exp( - 0.5 * ( ( input_ - mean_ ) / sigma_ )**2 ) ) 
     elif shift_ == "DN":
-      return input_ - const_ * input_ * ( 1 - input_ ) * ( 1 - np.exp( -( ( input_ - mean_ ) / sigma_ )**2 ) )
+      return input_ - const_ * input_ * ( 1 - input_ ) * ( 1 - np.exp( - 0.5 * ( ( input_ - mean_ ) / sigma_ )**2 ) )
     else:
       quit( "[WARN] Invalid shift used, quitting..." )
 

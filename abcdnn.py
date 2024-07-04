@@ -20,11 +20,12 @@ def NAF( inputdim, conddim, activation, regularizer, initializer, nodes_cond, hi
 # neural autoregressive flow is a chain of MLP networks used for the conditioner and transformer parts of the flow
 # inputdim = number of transformed inputs (should be 2)
 # conddim = conditional categories ( should be 5, 3 for X and 2 for Y control variables )
+  keras.constraints.NonNeg()
   activation_key = { # edit this if you add options to config.hyper dict with more activation functions
     "swish": tf.nn.swish,
     "softplus": tf.nn.softplus,
-    "relu": tf.nn.relu,
-    "elu": tf.nn.elu
+    "elu": tf.nn.elu,
+    "relu": tf.nn.relu
   }
   
   xin = layers.Input( shape = ( inputdim + conddim, ), name = "INPUT_LAYER" ) # the expected input data shape should be 7
@@ -442,6 +443,7 @@ class ABCDnn(object):
       "MINIBATCH": self.minibatch,
       "DISC TAG": self.disc_tag,
       "INPUTS": inputs_list,
+      "SIGMAS": self.mmd_sigmas,
       "INPUTMEANS": means_list,
       "INPUTSIGMAS": sigmas_list,
       "VARIABLES": self.variables,

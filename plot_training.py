@@ -14,6 +14,7 @@ import ROOT
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import mplhep as hep
 
 os.environ["KERAS_BACKEND"] = "tensorflow"
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
@@ -179,7 +180,7 @@ NAF = abcdnn.NAF(
 NAF.load_weights( os.path.join( folder, args.tag ) )
 
 for region in tqdm.tqdm( predictions_best ):
-  NAF_predict = np.asarray( NAF.predict( np.asarray( inputs_nrm_region[ region ] )[::2] ) )
+  NAF_predict = np.asarray( NAF.predict( np.asarray( inputs_nrm_region[ region ] )[::5] ) )
   predictions_best[ region ] = NAF_predict * inputsigmas[0:2] + inputmeans[0:2] 
  
   
@@ -204,7 +205,7 @@ for i, checkpoint in enumerate( sorted( checkpoints ) ):
   
   predictions[ int( epoch ) ] = { region: [] for region in [ "X", "Y", "A", "B", "C", "D" ] }
   for region in predictions[ int( epoch ) ]:
-    NAF_predict = np.asarray( NAF.predict( np.asarray( inputs_nrm_region[ region ] )[::2] ) )
+    NAF_predict = np.asarray( NAF.predict( np.asarray( inputs_nrm_region[ region ] )[::5] ) )
     predictions[ int( epoch ) ][ region ] = NAF_predict * inputsigmas[0:2] + inputmeans[0:2]
   x1_mean, x1_std = np.mean( predictions[ int( epoch ) ][ "D" ][:,0] ), np.std( predictions[ int( epoch ) ][ "D" ][:,0] )
   try:
@@ -239,6 +240,7 @@ def ratio_err( x, xerr, y, yerr ):
   return np.sqrt( ( yerr * x / y**2 )**2 + ( xerr / y )**2 )
 
 def plot_hist( ax, variable, x, y, epoch, mc_pred, mc_true, mc_minor, weights_minor, data, bins, useMinor, blind ):
+  hep.cms.text( "Work in Progress", fontsize = 10, ax = ax )
   mc_pred_hist = np.histogram( np.clip( mc_pred, bins[0], bins[-1] ), bins = bins, density = False )
   mc_pred_scale = float( np.sum( mc_pred_hist[0] ) )
   
@@ -308,7 +310,7 @@ def plot_hist( ax, variable, x, y, epoch, mc_pred, mc_true, mc_minor, weights_mi
   else:
     title_text += "{}={}".format( config.variables[ config.regions[ "Y" ][ "VARIABLE" ] ][ "LATEX" ], y_val ) 
   title_text += "$"
-  ax.set_title( "Region {}: {}".format( get_region( x_val, y_val ), title_text ), ha = "right", x = 1.0, fontsize = 10 )
+  hep.cms.lumitext( "Region {}: {}".format( get_region( x_val, y_val ), title_text ), fontsize = 7, ax = ax )
   ax.text(
     0.02, 0.95, str(epoch),
     ha = "left", va = "top", transform = ax.transAxes

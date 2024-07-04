@@ -15,7 +15,7 @@ import abcdnn
 
 parser = ArgumentParser()
 parser.add_argument( "-s", "--source", required = True )
-parser.add_argument( "-b", "--minor",  required = True )
+parser.add_argument( "-b", "--minor", default = "none" )
 parser.add_argument( "-t", "--target", required = True )
 parser.add_argument( "--hpo", action = "store_true" )
 parser.add_argument( "--randomize", action = "store_true" )

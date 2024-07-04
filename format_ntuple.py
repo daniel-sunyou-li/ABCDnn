@@ -11,7 +11,6 @@ import xsec
 
 parser = ArgumentParser()
 parser.add_argument( "-y",  "--year", default = "2017", help = "Year for sample" )
-parser.add_argument( "-n", "--name", required = True, help = "Output name of ROOT file" )
 parser.add_argument( "-v",  "--variables", nargs = "+", default = [ "AK4HT", "DNN_1to40_3t" ], help = "Variables to transform" )
 parser.add_argument( "-p",  "--pEvents", default = 100, help = "Percent of events (0 to 100) to include from each file." )
 parser.add_argument( "-l",  "--location", default = "BRUX", help = "Location of input ROOT files: LPC,BRUX" )
@@ -167,10 +166,10 @@ def format_ntuple( inputs, output, trans_var, weight = None ):
   ntuple.Write()
   
 if args.doMajorMC:
-  format_ntuple( inputs = config.samples_input[ args.year ][ "MAJOR MC" ], output = args.name + "_" + args.year + "_mc_p" + args.pEvents, weight = weightXSec, trans_var = args.variables )
+  format_ntuple( inputs = config.samples_input[ args.year ][ "MAJOR MC" ], output =  "source_" + args.year + "_mc_p" + args.pEvents, weight = weightXSec, trans_var = args.variables )
 elif args.doMinorMC:
-  format_ntuple( inputs = config.samples_input[ args.year ][ "MINOR MC" ], output = args.name + "_" + args.year + "_mc_p" + args.pEvents, weight = weightXSec, trans_var = args.variables )
+  format_ntuple( inputs = config.samples_input[ args.year ][ "MINOR MC" ], output = "minor_" + args.year + "_mc_p" + args.pEvents, weight = weightXSec, trans_var = args.variables )
 elif args.doClosureMC:
-  format_ntuple( inputs = config.samples_input[ args.year ][ "CLOSURE" ], output = args.name + "_" + args.year + "_mc_p" + args.pEvents, weight = weightXSec, trans_var = args.variables )
+  format_ntuple( inputs = config.samples_input[ args.year ][ "CLOSURE" ], output =  "closure_" + args.year + "_mc_p" + args.pEvents, weight = weightXSec, trans_var = args.variables )
 if args.doData:
-  format_ntuple( inputs = config.samples_input[ args.year ][ "DATA" ], output = args.name + "_" + args.year + "_data_p" + args.pEvents, weight = weightXSec, trans_var = args.variables )
+  format_ntuple( inputs = config.samples_input[ args.year ][ "DATA" ], output =  "target_" + args.year + "_data_p" + args.pEvents, weight = weightXSec, trans_var = args.variables )

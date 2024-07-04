@@ -23,18 +23,18 @@ sampleDir = {
 }
 
 variables = {
-  "AK4HT": {
-    "CATEGORICAL": False,
-    "TRANSFORM": True,
-    "LIMIT": [350.,4000.],
-    "LATEX": "H_T\ (GeV)"
-  },
-  #"DNN_1to40_nJ4pnB1p": {
+  #"AK4HT": {
   #  "CATEGORICAL": False,
   #  "TRANSFORM": True,
-  #  "LIMIT": [0.,1.],
-  #  "LATEX": "DNN"
+  #  "LIMIT": [350.,4000.],
+  #  "LATEX": "H_T\ (GeV)"
   #},
+  "DNN_1to40_nJ4pnB1p": {
+    "CATEGORICAL": False,
+    "TRANSFORM": True,
+    "LIMIT": [0.,1.],
+    "LATEX": "DNN"
+  },
   "DNN_1to40_Run2_nJ4pnB1p": {
     "CATEGORICAL": False,
     "TRANSFORM": True,
@@ -58,12 +58,12 @@ variables = {
 selection = { # edit these accordingly
   "NJets_JetSubCalc": { "VALUE": [ 4 ], "CONDITION": [ ">=" ] },
   "NJetsCSV_JetSubCalc": { "VALUE": [ 1 ], "CONDITION": [ ">=" ] },
-  "NresolvedTops1pFake": { "VALUE": [ 1 ], "CONDITION": [ ">=" ] },
+  "NresolvedTops1pFake": { "VALUE": [ 0 ], "CONDITION": [ "==" ] },
   "corr_met_MultiLepCalc": { "VALUE": [ 20. ], "CONDITION": [ ">" ] },
   "MT_lepMet": { "VALUE": [ 0 ], "CONDITION": [ ">" ] },
   "corr_met_MultiLepCalc + 0.667 * MT_lepMet": { "VALUE": [ 0. ], "CONDITION": [ ">" ] },
   "minDR_lepJet": { "VALUE": [ 0.2 ], "CONDITION": [ ">" ] },
-  "AK4HT": { "VALUE": [ 390. ], "CONDITION": [ ">" ] },
+  "AK4HT": { "VALUE": [ 450. ], "CONDITION": [ ">" ] },
   "DataPastTriggerX": { "VALUE": [ 1 ], "CONDITION": [ "==" ] },
   "MCPastTriggerX": { "VALUE": [ 1 ], "CONDITION": [ "==" ] },
 }
@@ -87,33 +87,34 @@ regions = {
 
 params = {
   "MODEL": { # parameters for setting up the NAF model
-    "NODES_COND": 8,
-    "HIDDEN_COND": 1,
-    "NODES_TRANS": 8,
+    "NODES_COND": 32,
+    "HIDDEN_COND": 2,
+    "NODES_TRANS": 16,
     "LRATE": 1e-2,
-    "DECAY": 0.1,
-    "GAP": 200,
-    "DEPTH": 1,
-    "REGULARIZER": "NONE", # DROPOUT, BATCHNORM, ALL, NONE
-    "INITIALIZER": "RandomNormal", # he_normal, RandomNormal
-    "ACTIVATION": "swish", # softplus, relu, swish
+    "DECAY": 0.05,
+    "GAP": 100,
+    "DEPTH": 2,
+    "REGULARIZER": "BATCHNORM", # DROPOUT, BATCHNORM, ALL, NONE
+    "INITIALIZER": "he_normal", # he_normal, RandomNormal
+    "ACTIVATION": "relu", # softplus, swish, elu, relu
     "BETA1": 0.9,
     "BETA2": 0.999,
-    "MMD SIGMAS": [0.05,0.1,0.2],
+    "MMD SIGMAS": [0.1,0.5,1.0],
+    #"MMD SIGMAS": [0.1,0.3,0.6],
     "MMD WEIGHTS": None,
-    "MINIBATCH": 2**6,
+    "MINIBATCH": 2**8,
     "RETRAIN": True,
     "PERMUTE": False,
     "SEED": 101, # this can be overridden when running train_abcdnn.py
     "SAVEDIR": "./Results/",
-    "CLOSURE": 0.03,
-    "VERBOSE": True  
+    "CLOSURE": 0.1,
+    "VERBOSE": False 
   },
   "TRAIN": {
-    "EPOCHS": 2000,
+    "EPOCHS": 3000,
     "PATIENCE": 0,
     "MONITOR": 100,
-    "MONITOR THRESHOLD": 0,  # only save model past this epoch
+    "MONITOR THRESHOLD": 2000,  # only save model past this epoch
     "PERIODIC SAVE": True,   # saves model at each epoch step according to "MONITOR" 
     "SHOWLOSS": True,
     "EARLY STOP": False,      # early stop if validation loss begins diverging
@@ -355,7 +356,11 @@ samples_input = {
 "ttHToNonbb_M125_TuneCP5_13TeV-powheg-pythia8_hadd.root",
     ],
     "CLOSURE": [
-"TTTT_TuneCP5_13TeV-amcatnlo-pythia8_hadd.root",
+"TTTo2L2Nu_TuneCP5_13TeV-powheg-pythia8_tt1b_hadd.root",
+"TTTo2L2Nu_TuneCP5_13TeV-powheg-pythia8_tt2b_hadd.root",
+"TTTo2L2Nu_TuneCP5_13TeV-powheg-pythia8_ttbb_hadd.root",
+"TTTo2L2Nu_TuneCP5_13TeV-powheg-pythia8_ttcc_hadd.root",
+"TTTo2L2Nu_TuneCP5_13TeV-powheg-pythia8_ttjj_hadd.root",
     ]
   },
   "2018": {
