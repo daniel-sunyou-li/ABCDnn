@@ -3,10 +3,9 @@
 
 import numpy as np
 import os
-import imageio
+import imageio.v2 as imageio
 import uproot
 import abcdnn
-import tqdm
 from argparse import ArgumentParser
 from json import loads as load_json
 from array import array
@@ -83,17 +82,17 @@ print( ">> Found {} variables: ".format( len( variables ) ) )
 for i, variable in enumerate( variables ):
   print( "  + {}: [{},{}], Categorical = {}".format( variable, lowerlimit[i], upperlimit[i], categorical[i] ) )
 
-inputs_src = sTree.pandas.df( variables )
+inputs_src = sTree.arrays( variables, library = "pd" )
 
 x_region = np.linspace( config.regions[ "X" ][ "MIN" ], config.regions[ "X" ][ "MAX" ], config.regions[ "X" ][ "MAX" ] - config.regions[ "X" ][ "MIN" ] + 1 )
 y_region = np.linspace( config.regions[ "Y" ][ "MIN" ], config.regions[ "Y" ][ "MAX" ], config.regions[ "Y" ][ "MAX" ] - config.regions[ "Y" ][ "MIN" ] + 1 )
 inputs_src_region = { region: None for region in [ "X", "Y", "A", "B", "C", "D" ] }
 print( ">> Found {} total source entries".format( inputs_src.shape[0] ) )
-inputs_tgt = tTree.pandas.df( variables ) 
+inputs_tgt = tTree.arrays( variables, library = "pd" ) 
 inputs_tgt_region = { region: None for region in [ "X", "Y", "A", "B", "C", "D" ] }
 print( ">> Found {} total target entries".format( inputs_tgt.shape[0] ) )
 
-inputs_mnr = mTree.pandas.df( variables + [ "xsecWeight" ] )
+inputs_mnr = mTree.arrays( variables + [ "xsecWeight" ], library = "pd" )
 inputs_mnr_region = { region: None for region in [ "X", "Y", "A", "B", "C", "D" ] }
 print( ">> Found {} total minor background entries".format( inputs_mnr.shape[0] ) )
 
@@ -179,8 +178,8 @@ NAF = abcdnn.NAF(
 )
 NAF.load_weights( os.path.join( folder, args.tag ) )
 
-for region in tqdm.tqdm( predictions_best ):
-  NAF_predict = np.asarray( NAF.predict( np.asarray( inputs_nrm_region[ region ] )[::5] ) )
+for region in predictions_best:
+  NAF_predict = np.asarray( NAF.predict( np.asarray( inputs_nrm_region[ region ] )[::1] ) )
   predictions_best[ region ] = NAF_predict * inputsigmas[0:2] + inputmeans[0:2] 
  
   
@@ -205,7 +204,7 @@ for i, checkpoint in enumerate( sorted( checkpoints ) ):
   
   predictions[ int( epoch ) ] = { region: [] for region in [ "X", "Y", "A", "B", "C", "D" ] }
   for region in predictions[ int( epoch ) ]:
-    NAF_predict = np.asarray( NAF.predict( np.asarray( inputs_nrm_region[ region ] )[::5] ) )
+    NAF_predict = np.asarray( NAF.predict( np.asarray( inputs_nrm_region[ region ] )[::1] ) )
     predictions[ int( epoch ) ][ region ] = NAF_predict * inputsigmas[0:2] + inputmeans[0:2]
   x1_mean, x1_std = np.mean( predictions[ int( epoch ) ][ "D" ][:,0] ), np.std( predictions[ int( epoch ) ][ "D" ][:,0] )
   try:
@@ -247,7 +246,9 @@ def plot_hist( ax, variable, x, y, epoch, mc_pred, mc_true, mc_minor, weights_mi
   mc_true_hist = np.histogram( mc_true, bins = bins, density = False )
   mc_true_scale = float( np.sum( mc_true_hist[0] ) )
 
-  mc_minor_hist = np.histogram( mc_minor, bins = bins, weights = weights_minor, density = False )
+
+  mc_minor_sf = 1. / ( float( args.minor.split( "p" )[-1].split( "." )[0] ) / 100. )
+  mc_minor_hist = np.histogram( mc_minor, bins = bins, weights = weights_minor * mc_minor_sf, density = False )
   mc_minor_scale = len(mc_minor)
 
   data_hist = np.histogram( data, bins = bins, density = False )
@@ -324,7 +325,8 @@ def plot_ratio( ax, variable, x, y, mc_pred, mc_true, mc_minor, weights_minor, d
   mc_true_hist = np.histogram( mc_true, bins = bins, density = False )
   mc_true_scale = float( len(mc_true) )
 
-  mc_minor_hist = np.histogram( mc_minor, bins = bins, weights = weights_minor, density = False )
+  mc_minor_sf = 1. / ( float( args.minor.split( "p" )[-1].split( "." )[0] ) / 100. )
+  mc_minor_hist = np.histogram( mc_minor, bins = bins, weights = weights_minor * mc_minor_sf, density = False )
   mc_minor_scale = float( len(mc_minor) )
 
   data_hist = np.histogram( data, bins = bins, density = False )
@@ -332,6 +334,8 @@ def plot_ratio( ax, variable, x, y, mc_pred, mc_true, mc_minor, weights_minor, d
     data_mod = data_hist[0] - mc_minor_hist[0]
   else:
     data_mod = data_hist[0]
+  for i in range( len( data_mod ) ):
+    if data_mod[i] < 0: data_mod[i] = 0
   data_mod_scale = np.sum(data_mod)
   
   ratio = []

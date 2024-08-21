@@ -168,7 +168,7 @@ def fill_tree( sample, dLocal ):
   def predict( checkpoint ):
     
     encoders = abcdnn.OneHotEncoder_int( categoricals[ checkpoint ], lowerlimit = lowerlimits[ checkpoint ], upperlimit = upperlimits[ checkpoint ] )
-    inputs_mc = upTree.pandas.df( variables[ checkpoint ] )
+    inputs_mc = upTree.arrays( variables[ checkpoint ], library = "pd" )
     inputmean   = np.hstack( [ float( mean ) for mean in means[ checkpoint ] ] )
     inputsigma  = np.hstack( [ float( sigma ) for sigma in sigmas[ checkpoint ] ] )
     
@@ -196,7 +196,7 @@ def fill_tree( sample, dLocal ):
     for key_ in inputs_norm:
       predictions[ checkpoint ][ key_ ] = models[ checkpoint ].predict( inputs_norm[ key_ ] ) * inputsigma[0:2] + inputmean[0:2]
     
-  for checkpoint in tqdm( checkpoints ):
+  for checkpoint in checkpoints:
     predict( checkpoint )
 
   rFile_in = ROOT.TFile.Open( sample.replace( "/isilon/hadoop", "" ) )
@@ -260,7 +260,7 @@ def fill_tree( sample, dLocal ):
             arrays[checkpoint][variable + "_CLOSURE" + shift_][0] = predictions[checkpoint]["CLOSURE" + shift_][i][j]
     rTree_out.Fill()
   
-  for i in tqdm( range( rTree_in.GetEntries() ) ): 
+  for i in range( rTree_in.GetEntries() ): 
     loop_tree( rTree_in, rTree_out, i )    
 
   rTree_out.Write()

@@ -60,14 +60,14 @@ for f in files:
 
   
 ROOT.gInterpreter.Declare("""
-    float compute_weight( float scale, float triggerXSF, float triggerSF, float pileupWeight, float lepIdSF, float EGammaGsfSF, float isoSF, float L1NonPrefiringProb_CommonCalc, float MCWeight_MultiLepCalc, float xsecEff, float btagDeepJetWeight, float btagDeepJet2DWeight_HTnj ){
-      return scale * triggerXSF * triggerSF * pileupWeight * lepIdSF * EGammaGsfSF * isoSF * L1NonPrefiringProb_CommonCalc * ( MCWeight_MultiLepCalc / abs( MCWeight_MultiLepCalc ) ) * xsecEff * btagDeepJetWeight * btagDeepJet2DWeight_HTnj;
+    float compute_weight( float scale, float triggerSF, float pileupWeight, float lepIdSF, float EGammaGsfSF, float isoSF, float L1NonPrefiringProb_CommonCalc, float MCWeight_MultiLepCalc, float xsecEff, float btagDeepJetWeight, float btagDeepJet2DWeight_HTnj ){
+      return scale * triggerSF * pileupWeight * lepIdSF * EGammaGsfSF * isoSF * L1NonPrefiringProb_CommonCalc * ( MCWeight_MultiLepCalc / abs( MCWeight_MultiLepCalc ) ) * xsecEff * btagDeepJetWeight * btagDeepJet2DWeight_HTnj;
   }
 """)
 
 ROOT.gInterpreter.Declare("""
-    float compute_weight_ttbar( float scale, float topPtWeight13TeV, float triggerXSF, float triggerSF, float pileupWeight, float lepIdSF, float EGammaGsfSF, float isoSF, float L1NonPrefiringProb_CommonCalc, float MCWeight_MultiLepCalc, float xsecEff, float btagDeepJetWeight, float btagDeepJet2DWeight_HTnj ){
-      return scale * topPtWeight13TeV * triggerXSF * triggerSF * pileupWeight * lepIdSF * EGammaGsfSF * isoSF * L1NonPrefiringProb_CommonCalc * ( MCWeight_MultiLepCalc / abs( MCWeight_MultiLepCalc ) ) * xsecEff * btagDeepJetWeight * btagDeepJet2DWeight_HTnj;
+    float compute_weight_ttbar( float scale, float topPtWeight13TeV, float triggerSF, float pileupWeight, float lepIdSF, float EGammaGsfSF, float isoSF, float L1NonPrefiringProb_CommonCalc, float MCWeight_MultiLepCalc, float xsecEff, float btagDeepJetWeight, float btagDeepJet2DWeight_HTnj ){
+      return scale * topPtWeight13TeV * triggerSF * pileupWeight * lepIdSF * EGammaGsfSF * isoSF * L1NonPrefiringProb_CommonCalc * ( MCWeight_MultiLepCalc / abs( MCWeight_MultiLepCalc ) ) * xsecEff * btagDeepJetWeight * btagDeepJet2DWeight_HTnj;
   }
 """)
 
@@ -138,15 +138,15 @@ def format_ntuple( inputs, output, trans_var, weight = None ):
       filter_string += " && ( leptonEta_MultiLepCalc > -1.3 || ( leptonPhi_MultiLepCalc < -1.57 || leptonPhi_MultiLepCalc > -0.87 ) )"
     rDF_filter = rDF.Filter( filter_string )
     if f.startswith( "TTTo" ):
-      rDF_weight = rDF_filter.Define( "xsecWeight", "compute_weight_ttbar( {}, topPtWeight13TeV, triggerXSF, triggerSF, pileupWeight, lepIdSF, EGammaGsfSF, isoSF, L1NonPrefiringProb_CommonCalc, MCWeight_MultiLepCalc, {}, btagDeepJetWeight, btagDeepJet2DWeight_HTnj )".format(
+      rDF_weight = rDF_filter.Define( "xsecWeight", "compute_weight_ttbar( {}, topPtWeight13TeV, triggerSF, pileupWeight, lepIdSF, EGammaGsfSF, isoSF, L1NonPrefiringProb_CommonCalc, MCWeight_MultiLepCalc, {}, btagDeepJetWeight, btagDeepJet2DWeight_HTnj )".format(
         scale, weight[f]
       ) )
     else:
-      rDF_weight = rDF_filter.Define( "xsecWeight", "compute_weight( {}, triggerXSF, triggerSF, pileupWeight, lepIdSF, EGammaGsfSF, isoSF, L1NonPrefiringProb_CommonCalc, MCWeight_MultiLepCalc, {}, btagDeepJetWeight, btagDeepJet2DWeight_HTnj )".format(
+      rDF_weight = rDF_filter.Define( "xsecWeight", "compute_weight( {}, triggerSF, pileupWeight, lepIdSF, EGammaGsfSF, isoSF, L1NonPrefiringProb_CommonCalc, MCWeight_MultiLepCalc, {}, btagDeepJetWeight, btagDeepJet2DWeight_HTnj )".format(
         scale, weight[f]
       ) )
     sample_pass = rDF_filter.Count().GetValue()
-    dict_filter = rDF_weight.AsNumpy( columns = list( ntuple.variables.keys() + [ "xsecWeight" ] ) )
+    dict_filter = rDF_weight.AsNumpy( columns = list( ntuple.variables.keys() ) + [ "xsecWeight" ] )
     del rDF, rDF_filter, rDF_weight
     n_inc = int( sample_pass * float( args.pEvents ) / 100. )
  

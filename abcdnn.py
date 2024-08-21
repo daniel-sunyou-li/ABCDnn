@@ -29,7 +29,7 @@ def NAF( inputdim, conddim, activation, regularizer, initializer, nodes_cond, hi
   }
   
   xin = layers.Input( shape = ( inputdim + conddim, ), name = "INPUT_LAYER" ) # the expected input data shape should be 7
-  xcondin = xin[ :, inputdim: ] # expected conditional categories layer
+  xcondin = xin[ :, inputdim: ]   # expected conditional categories layer
   xfeatures = xin[ :, :inputdim ] # expected transformed input layer
   nextfeature = xfeatures
   
@@ -42,7 +42,7 @@ def NAF( inputdim, conddim, activation, regularizer, initializer, nodes_cond, hi
 
     # tfp.bijectors.Permute permutes rightmost dimension of a tensor
     #   - permutation is an int-like vector-shaped tensor representing the permutation to apply
-    # if you feed in permuter.forward([=1.,0,1.]) --> [1.,0.,-1.]
+    # if you feed in permuter.forward([-1.,0,1.]) --> [1.,0.,-1.]
 
     permuter = tfp.bijectors.Permute( permutation = permutation) # initialize the permuter
     xfeatures_permuted = permuter.forward( nextfeature ) # apply permutation to transformation variables
@@ -66,8 +66,10 @@ def NAF( inputdim, conddim, activation, regularizer, initializer, nodes_cond, hi
       # inverse conditioner network
       condnet = xcondin
       #condnet = layers.Dense( nodes_cond, activation = activation_key[ activation ], name = "INV_COND_DENSE_{}_{}_{}".format( idepth, i, iv ) )( condnet )
-      w2 = layers.Dense( nodes_trans, activation = tf.nn.softplus, name = "INV_SIGMOID_WEIGHT_{}_{}".format( idepth, i ) )( condnet )
-      w2 = w2 / ( 1e-5 + tf.reduce_sum( w2, axis = 1, keepdims = True ) ) # normalize the transformer output for softmax weighting to retain normalization in sigmoidal space
+      w2 = layers.Dense( nodes_trans, activation = tf.nn.softplus, kernel_initializer = initializer, name = "INV_SIGMOID_WEIGHT_{}_{}".format( idepth, i ) )( condnet )
+      #w2 = layers.Dense( nodes_trans, activation = tf.nn.softplus, kernel_initializer = initializer, name = "INV_SIGMOID_WEIGHT_{}_{}_2".format( idepth, i ) )( w2 )
+      #w2 = layers.Dense( nodes_trans, activation = tf.nn.softplus, kernel_initializer = initializer, name = "INV_SIGMOID_WEIGHT_{}_{}_3".format( idepth, i ) )( w2 )
+      w2 = w2 / ( 1e-12 + tf.reduce_sum( w2, axis = 1, keepdims = True ) ) # normalize the transformer output for softmax weighting to retain normalization in sigmoidal space
       
       # inverse transformer network
       sigflow = invsigmoid( tf.reduce_sum( sig *  w2, axis = 1, keepdims = True ) )
@@ -227,7 +229,7 @@ def unweight(pddata):
     idx += nmatches
   return pddata
 
-def prepdata( rSource, rMinor, rTarget, variables, regions, closure ):
+def prepdata( rSource, rTarget, variables, regions, closure ):
 # mc_weight(str) = option for weighting MC by the xsec
 # rSource (str) = source ROOT file
 # rTarget (str) = target ROOT file
@@ -249,24 +251,18 @@ def prepdata( rSource, rMinor, rTarget, variables, regions, closure ):
 
   # read MC and data
   fMajor = uproot.open( rSource )
-  fMinor = uproot.open( rMinor )
   fTarget = uproot.open( rTarget )
   tMajor = fMajor[ 'Events' ]
-  tMinor = fMinor[ 'Events' ]
   tTarget = fTarget[ 'Events' ]
   
-  dfMajor = tMajor.pandas.df( vNames )
+  dfMajor = tMajor.arrays( vNames, library = "pd" )
   dfMajor = dfMajor.loc[ ( dfMajor[ regions[ "X" ][ "VARIABLE" ] ] >= regions[ "X" ][ "MIN" ] ) & ( dfMajor[ regions[ "Y" ][ "VARIABLE" ] ] >= regions[ "Y" ][ "MIN" ] ) ]
-  dfMinor = tMinor.pandas.df( vNames + [ "xsecWeight" ] )
-  dfMinor = dfMinor.loc[ ( dfMinor[ regions[ "X" ][ "VARIABLE" ] ] >= regions[ "X" ][ "MIN" ] ) & ( dfMinor[ regions[ "Y" ][ "VARIABLE" ] ] >= regions[ "Y" ][ "MIN" ] ) ]
-  dfTarget = tTarget.pandas.df( vNames )
+  dfTarget = tTarget.arrays( vNames, library = "pd" )
   dfTarget = dfTarget.loc[ ( dfTarget[ regions[ "X" ][ "VARIABLE" ] ] >= regions[ "X" ][ "MIN" ] ) & ( dfTarget[ regions[ "Y" ][ "VARIABLE" ] ] >= regions[ "Y" ][ "MIN" ] ) ]
 
   inputRawMajor = dfMajor
   inputEncMajor = _onehotencoder.encode( inputRawMajor.to_numpy( dtype=np.float32 ) )
   
-  inputRawMinor = dfMinor # not used in training
-
   inputRawTarget = dfTarget
   inputEncTarget = _onehotencoder.encode( inputRawTarget.to_numpy( dtype=np.float32 ) )
 
@@ -298,7 +294,7 @@ def prepdata( rSource, rMinor, rTarget, variables, regions, closure ):
   inputNormTarget = ( inputEncTarget - inputMean ) / inputSigma        # normed Data
   inputNormMajor = ( inputEncMajor - inputMean ) / inputSigma              # normed MC  
   
-  return inputRawTarget, inputRawMajor, inputRawMinor, inputNormTarget, inputNormMajor, inputMean, inputSigma, vNames, ncat_per_feature
+  return inputRawTarget, inputRawMajor, inputNormTarget, inputNormMajor, inputMean, inputSigma, vNames, ncat_per_feature
   
   
 # construct the ABCDnn model here
@@ -376,7 +372,7 @@ class ABCDnn(object):
       permute = self.permute
     )
     if self.verbose: self.model.summary()
-    self.optimizer = keras.optimizers.Adam(
+    self.optimizer = keras.optimizers.legacy.Adam(
       learning_rate = SawtoothSchedule( self.lr, self.lr * self.decay, self.gap, 0 ),  
       beta_1 = self.beta1, beta_2 = self.beta2, 
       epsilon = 1e-7, 
@@ -418,7 +414,7 @@ class ABCDnn(object):
     self.categoricals_mc, self.categorical_mc_indices_grouped = self.category_sorted( self.mcnumpydata, verbose )
     pass
 
-  def savehyperparameters(self, inputs, means, sigmas, transfer ):
+  def savehyperparameters(self, inputs, means, sigmas ):
     """Write hyper parameters into file
     """
     means_list = [ str( mean ) for mean in means[0] ]
@@ -449,7 +445,7 @@ class ABCDnn(object):
       "VARIABLES": self.variables,
       "REGIONS": self.regions,
       "EPOCHS": self.steps,
-      "TRANSFER": transfer,
+      #"TRANSFER": transfer,
       "CLOSURE": self.closure
     }
     
@@ -679,25 +675,22 @@ class ABCDnn_training(object):
   def __init__( self ):
     pass
 
-  def setup_events( self, rSource, rMinor, rTarget, selection, variables, regions, closure ):
+  def setup_events( self, rSource, rTarget, selection, variables, regions, closure ):
     # obtain the normalized data (plus others)
     self.rSource = rSource        # (str) path to source ROOT file
-    self.rMinor = rMinor          # (str) path to minor ROOT file
     self.rTarget = rTarget        # (str) path to target ROOT file
     self.variables = variables    # (dict) variable limits and type
     self.regions = regions        # (dict) control and signal regions
 
     self.sourceSF = 1. / ( float( self.rSource.split( "p" )[-1].split( ".root" )[0] ) / 100. )
     self.targetSF = 1. / ( float( self.rTarget.split( "p" )[-1].split( ".root" )[0] ) / 100. )
-    self.minorSF  = 1. / ( float( self.rMinor.split( "p" )[-1].split( ".root" )[0] )  / 100. )
 
-    rawinputs, rawinputsmc, rawinputsminor, normedinputs, normedinputsmc, inputMean, \
-      inputSigma, inputnames, ncat_per_feature = prepdata( rSource, rMinor, rTarget,
+    rawinputs, rawinputsmc, normedinputs, normedinputsmc, inputMean, \
+      inputSigma, inputnames, ncat_per_feature = prepdata( rSource,  rTarget,
       variables, regions, closure )
 
     self.rawinputs = rawinputs                # unnormalized data tree after event selection
     self.rawinputsmc = rawinputsmc            # unnormalized mc major tree after event selection
-    self.rawinputsminor = rawinputsminor      # unnormalized mc minor tree after event selection
     self.normedinputs = normedinputs          # normalized data tree after event selection
     self.normedinputsmc = normedinputsmc      # normalized mc tree after event selection
     self.inputs = inputnames                  # name of inputs
@@ -845,23 +838,18 @@ class ABCDnn_training(object):
         if x == self.regions[ "X" ][ "SIGNAL" ] and self.regions[ "X" ][ "INCLUSIVE" ]:
           self.select[ "DATA" ][ self.region[i] ] = ( self.rawinputs[ self.regions[ "X" ][ "VARIABLE" ] ] >= x )
           self.select[ "MC" ][ self.region[i] ] = ( self.rawinputsmc[ self.regions[ "X" ][ "VARIABLE" ] ] >= x )
-          self.select[ "MINOR" ][ self.region[i] ] = ( self.rawinputsminor[ self.regions[ "X" ][ "VARIABLE" ] ] >= x )
         else: 
           self.select[ "DATA" ][ self.region[i] ] = ( self.rawinputs[ self.regions[ "X" ][ "VARIABLE" ] ] == x )
           self.select[ "MC" ][ self.region[i] ] = ( self.rawinputsmc[ self.regions[ "X" ][ "VARIABLE" ] ] == x )
-          self.select[ "MINOR" ][ self.region[i] ] = ( self.rawinputsminor[ self.regions[ "X" ][ "VARIABLE" ] ] == x )
         if y == self.regions[ "Y" ][ "SIGNAL" ] and self.regions[ "Y" ][ "INCLUSIVE" ]:
           self.select[ "DATA" ][ self.region[i] ] &= ( self.rawinputs[ self.regions[ "Y" ][ "VARIABLE" ] ] >= y )
           self.select[ "MC" ][ self.region[i] ] &= ( self.rawinputsmc[ self.regions[ "Y" ][ "VARIABLE" ] ] >= y )
-          self.select[ "MINOR" ][ self.region[i] ] &= ( self.rawinputsminor[ self.regions[ "Y" ][ "VARIABLE" ] ] >= y )
         else:
           self.select[ "DATA" ][ self.region[i] ] &= ( self.rawinputs[ self.regions[ "Y" ][ "VARIABLE" ] ] == y )
           self.select[ "MC" ][ self.region[i] ] &= ( self.rawinputsmc[ self.regions[ "Y" ][ "VARIABLE" ] ] == y )
-          self.select[ "MINOR" ][ self.region[i] ] &= ( self.rawinputsminor[ self.regions[ "Y" ][ "VARIABLE" ] ] == y )
 
         self.count[ "DATA" ][ self.region[i] ] = np.count_nonzero( self.select[ "DATA" ][ self.region[i] ] )
         self.count[ "MC" ][ self.region[i] ] = np.count_nonzero( self.select[ "MC" ][ self.region[i] ] )
-        self.count[ "MINOR" ][ self.region[i] ] = np.sum( self.rawinputsminor[ "xsecWeight" ][ self.select[ "MINOR" ][ self.region[i] ] ] ) 
         x_eq = ">=" if ( self.regions[ "X" ][ "INCLUSIVE" ] ) and ( x == self.regions[ "X" ][ "MAX" ] ) else "=="
         y_eq = ">=" if ( self.regions[ "Y" ][ "INCLUSIVE" ] ) and ( y == self.regions[ "Y" ][ "MAX" ] ) else "=="
         if verbose:
@@ -887,32 +875,7 @@ class ABCDnn_training(object):
         self.plottext.append( text )
       
         i += 1
-      
-  def extended_ABCD( self ):
-    # compute the norm of the raw data
-    dA, dB, dC, dD, dX, dY = self.count[ "DATA" ][ "A" ], self.count[ "DATA" ][ "B" ], self.count[ "DATA" ][ "C" ], self.count[ "DATA" ][ "D" ], self.count[ "DATA" ][ "X" ], self.count[ "DATA" ][ "Y" ]
-    mA, mB, mC, mD, mX, mY = self.count[ "MINOR" ][ "A" ], self.count[ "MINOR" ][ "B" ], self.count[ "MINOR" ][ "C" ], self.count[ "MINOR" ][ "D" ], self.count[ "MINOR" ][ "X" ], self.count[ "MINOR" ][ "D" ]
-    cA = dA * self.targetSF - mA * self.minorSF
-    cB = dB * self.targetSF - mB * self.minorSF
-    cC = dC * self.targetSF - mC * self.minorSF
-    cX = dX * self.targetSF - mX * self.minorSF
-    cY = dY * self.targetSF - mY * self.minorSF
-    mcD = self.count[ "MC" ][ "D" ] * self.sourceSF
-    self.pred = float( cB * cX * cC**2 / ( cA**2 * cY ) )
-    self.sigma_pred = np.sqrt( 1./cB + 1./cX + 1./cY + 4./cC + 4./cA ) * self.pred
-    print( "Ext. ABCD Prediction: {:.3f} pm {:.3f}".format( self.pred, self.sigma_pred ) )
-    print( "MC Major Count: {}".format( mcD ) )
-    print( "MC Minor Count: {:.1f}".format( mD ) )
-    print( "Data Count: {}".format( dD ) )
-    
-    self.transfer = float( self.pred ) / float( mcD )
-    self.transfer_err = np.sqrt( ( self.sigma_pred / mcD )**2 + ( self.pred * np.sqrt( mcD ) / mcD**2 )**2 )
-    print( "Transfer Factor ( Ext. ABCD / MC ) = {:.5f} pm {:.5f}".format( 
-      self.transfer,
-      self.transfer_err
-    ) )
-    pass
 
   def save_hyperparameters( self ):
     print( ">> Saving hyper parameters" )
-    self.model.savehyperparameters( self.inputs, self.inputMean, self.inputSigma, self.transfer )
+    self.model.savehyperparameters( self.inputs, self.inputMean, self.inputSigma )
