@@ -4,6 +4,7 @@
 import tensorflow as tf
 import tensorflow.keras as keras
 import tensorflow.keras.layers as layers
+import tensorflow.keras.regularizers as regularizers
 import tensorflow_probability as tfp
 from tensorflow.keras.optimizers.schedules import LearningRateSchedule
 import numpy as np
@@ -53,10 +54,10 @@ def NAF( inputdim, conddim, activation, regularizer, initializer, nodes_cond, hi
       for iv in range( hidden_cond ):
         if regularizer.upper() in [ "BATCHNORM", "ALL" ]:
           condnet = layers.BatchNormalization( name = "BATCHNORM_{}_{}_{}".format( idepth, i, iv ) )( condnet )
-        condnet = layers.Dense( nodes_cond, activation = activation_key[ activation ], kernel_initializer = initializer, name = "COND_DENSE_{}_{}_{}".format( idepth, i, iv ) )( condnet )
+        condnet = layers.Dense( nodes_cond, activation = activation_key[ activation ], kernel_initializer = initializer, kernel_regularizer = regularizers.L1L2(), name = "COND_DENSE_{}_{}_{}".format( idepth, i, iv ) )( condnet )
         if regularizer.upper() in [ "DROPOUT", "ALL" ]:
           condnet = layers.Dropout( 0.3, name = "DROPOUT_{}_{}_{}".format( idepth, i, iv ) )( condnet )
-      w1 = layers.Dense( nodes_trans, activation = tf.nn.softplus, kernel_initializer = initializer, name = "SIGMOID_WEIGHT_{}_{}".format( idepth, i ) )( condnet ) # has to be softplus for output to be >0
+      w1 = layers.Dense( nodes_trans, activation = tf.nn.softplus, kernel_initializer = initializer, kernel_regularizer = regularizers.L1L2(), name = "SIGMOID_WEIGHT_{}_{}".format( idepth, i ) )( condnet ) # has to be softplus for output to be >0
       b1 = layers.Dense( nodes_trans, activation = None, name = "SIGMOID_BIAS_{}_{}".format( idepth, i ) )( condnet )
       del condnet
 
@@ -66,9 +67,7 @@ def NAF( inputdim, conddim, activation, regularizer, initializer, nodes_cond, hi
       # inverse conditioner network
       condnet = xcondin
       #condnet = layers.Dense( nodes_cond, activation = activation_key[ activation ], name = "INV_COND_DENSE_{}_{}_{}".format( idepth, i, iv ) )( condnet )
-      w2 = layers.Dense( nodes_trans, activation = tf.nn.softplus, kernel_initializer = initializer, name = "INV_SIGMOID_WEIGHT_{}_{}".format( idepth, i ) )( condnet )
-      #w2 = layers.Dense( nodes_trans, activation = tf.nn.softplus, kernel_initializer = initializer, name = "INV_SIGMOID_WEIGHT_{}_{}_2".format( idepth, i ) )( w2 )
-      #w2 = layers.Dense( nodes_trans, activation = tf.nn.softplus, kernel_initializer = initializer, name = "INV_SIGMOID_WEIGHT_{}_{}_3".format( idepth, i ) )( w2 )
+      w2 = layers.Dense( nodes_trans, activation = tf.nn.softplus, kernel_initializer = initializer, kernel_regularizer = regularizers.L1L2(), name = "INV_SIGMOID_WEIGHT_{}_{}".format( idepth, i ) )( condnet )
       w2 = w2 / ( 1e-12 + tf.reduce_sum( w2, axis = 1, keepdims = True ) ) # normalize the transformer output for softmax weighting to retain normalization in sigmoidal space
       
       # inverse transformer network
@@ -563,7 +562,7 @@ class ABCDnn(object):
     with tf.GradientTape() as gtape:
       # get the predicted values from the current trained model
       generated = tf.concat( 
-	[
+	    [
           self.model( source ),
           target[:, -self.conddim:]
         ],

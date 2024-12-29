@@ -27,6 +27,7 @@ parser.add_argument( "-l", "--location", default = "LPC" )
 parser.add_argument( "-s", "--storage", default = "LOCAL", help = "LOCAL,EOS,BRUX" )
 parser.add_argument( "--test", action = "store_true" )
 parser.add_argument( "--closure", nargs = "*", help = "Add two additional branches for closure shift up and down for specified model." )
+parser.add_argument( "--regression", action = "store_true", help = "Include branches for corrected DNN based on regression fit along with uncertainty estimates" )
 args = parser.parse_args()
 
 import ROOT
@@ -64,7 +65,6 @@ upperlimits = {}
 lowerlimits = {}
 categoricals = {}
 regions = {}
-transfers = {}
 means = {}
 sigmas = {}
 means_pred = {}
@@ -87,7 +87,6 @@ for checkpoint in checkpoints:
       except:
         sys.exit( "[WARNING] {0}.json missing CLOSURE entry necessary for --closure arugment. Calculate using evaluate_model.py --closure and then add to {0}.json.".format( checkpoint ) )
     regions[ checkpoint ] = params[ "REGIONS" ]
-    transfers[ checkpoint ] = float( params[ "TRANSFER" ] )
     variables[ checkpoint ] = [ str( key ) for key in sorted( params[ "VARIABLES" ] ) if params[ "VARIABLES" ][ key ][ "TRANSFORM" ] ]
     variables_transform[ checkpoint ] = [ str( key ) for key in sorted( params[ "VARIABLES" ] ) if params[ "VARIABLES" ][ key ][ "TRANSFORM" ] ]
     variables[ checkpoint ].append( params[ "REGIONS" ][ "Y" ][ "VARIABLE" ] )
@@ -165,8 +164,24 @@ def fill_tree( sample, dLocal ):
     else:
       quit( "[WARN] Invalid shift used, quitting..." )
 
+  def regression_fit( input_, shift = "NOM", poly = "A", mod = 0. ):
+    with open( "Results/" + checkpoint + ".json", "r" ) as f:
+      params = load_json(f.read())
+    if shift == "NOM":
+      regression_out = input_**2*float(params["FIT PARAMS"][0][0]) + input_*float(params["FIT PARAMS"][1][0]) + float(params["FIT PARAMS"][2][0])
+    elif poly == "A":
+      if shift == "UP":
+        regression_out = input_**2*(1+mod)*float(params["FIT PARAMS"][0][0]) + input_*float(params["FIT PARAMS"][1][0]) + float(params["FIT PARAMS"][2][0])
+      else:
+        regression_out = input_**2*(1-mod)*float(params["FIT PARAMS"][0][0]) + input_*float(params["FIT PARAMS"][1][0]) + float(params["FIT PARAMS"][2][0])
+    elif poly == "B":
+      if shift == "UP":
+        regression_out = input_**2*float(params["FIT PARAMS"][0][0]) + input_*(1+mod)*float(params["FIT PARAMS"][1][0]) + float(params["FIT PARAMS"][2][0])
+      else:
+        regression_out = input_**2*float(params["FIT PARAMS"][0][0]) + input_*(1-mod)*float(params["FIT PARAMS"][1][0]) + float(params["FIT PARAMS"][2][0])
+    return regression_out
+
   def predict( checkpoint ):
-    
     encoders = abcdnn.OneHotEncoder_int( categoricals[ checkpoint ], lowerlimit = lowerlimits[ checkpoint ], upperlimit = upperlimits[ checkpoint ] )
     inputs_mc = upTree.arrays( variables[ checkpoint ], library = "pd" )
     inputmean   = np.hstack( [ float( mean ) for mean in means[ checkpoint ] ] )
@@ -213,17 +228,16 @@ def fill_tree( sample, dLocal ):
   arrays = {}
   branches = {}
   for checkpoint in checkpoints:
-    arrays[ checkpoint ] = { 
-      "transfer_{}".format( disc_tags[ checkpoint ] ): array( "f", [0.] )
-    } 
-    branches[ checkpoint ] = { 
-      "transfer_{}".format( disc_tags[ checkpoint ] ): rTree_out.Branch( "transfer_{}".format( disc_tags[ checkpoint ] ), arrays[ checkpoint ][ "transfer_{}".format( disc_tags[ checkpoint ] ) ], "transfer_{}/F".format( disc_tags[ checkpoint ] ) ), 
-    }
-    print( " + transfer_{}".format( disc_tags[ checkpoint ] ) )
+    arrays[checkpoint] = {}
+    branches[checkpoint] = {}
     for variable in variables_transform[ checkpoint ]:
       arrays[ checkpoint ][ variable ] = array( "f", [0.] )
       branches[ checkpoint ][ variable ] = rTree_out.Branch( "{}_{}".format( str( variable ), disc_tags[ checkpoint ] ) , arrays[ checkpoint ][ variable ], "{}_{}/F".format( str( variable ), disc_tags[ checkpoint ] ) );
       print( " + {}_{}".format( str( variable ), disc_tags[ checkpoint ] ) )    
+      if args.regression:
+        arrays[ checkpoint ][ variable + "_REG" ] = array( "f", [0.] )
+        branches[ checkpoint ][ variable + "_REG" ] = rTree_out.Branch( "{}_{}_REG".format( str(variable), disc_tags[checkpoint] ), arrays[checkpoint][variable+"_REG"], "{}_{}_REG/F".format( str(variable), disc_tags[checkpoint] ));
+        print( " + {}_{}_REG".format( str(variable), disc_tags[checkpoint] ) )
       for shift_ in [ "UP", "DN" ]:
         # add the output peak and tail shift branches
         arrays[ checkpoint ][ variable + "_PEAK" + shift_ ] = array( "f", [0.] )
@@ -238,10 +252,26 @@ def fill_tree( sample, dLocal ):
           arrays[ checkpoint ][ variable + "_TAIL" + shift_ ],
           "{}_{}_TAIL{}/F".format( str(variable), disc_tags[checkpoint], shift_ )
         );
+        if args.regression:
+          arrays[ checkpoint ][ variable + "_REGA" + shift_ ] = array( "f", [0.] )
+          branches[ checkpoint ][ variable + "_REGA" + shift_ ] = rTree_out.Branch(
+            "{}_{}_REGA{}".format( str(variable), disc_tags[checkpoint], shift_ ),
+            arrays[ checkpoint ][ variable + "_REGA" + shift_ ],
+            "{}_{}_REGA{}".format( str(variable), disc_tags[checkpoint], shift_ )
+          );
+          arrays[ checkpoint ][ variable + "_REGB" + shift_ ] = array( "f", [0.] )
+          branches[ checkpoint ][ variable + "_REGB" + shift_ ] = rTree_out.Branch(
+            "{}_{}_REGB{}".format( str(variable), disc_tags[checkpoint], shift_ ),
+            arrays[ checkpoint ][ variable + "_REGB" + shift_ ],
+            "{}_{}_REGB{}".format( str(variable), disc_tags[checkpoint], shift_ )
+          );
         print( " + {}_{}_PEAK{}".format( str(variable), disc_tags[ checkpoint ], shift_ ) )
         print( " + {}_{}_TAIL{}".format( str(variable), disc_tags[ checkpoint ], shift_ ) )
+        if args.regression:
+          print( " + {}_{}_REGA{}".format( str(variable), disc_tags[ checkpoint ], shift_ ) )
+          print( " + {}_{}_REGB{}".format( str(variable), disc_tags[ checkpoint ], shift_ ) )
         # add the closure branch for varying the input to ABCDnn 
-        if checkpoint in closure and "transfer" not in variable:
+        if checkpoint in closure:
           arrays[checkpoint][variable + "_CLOSURE" + shift_] = array( "f", [0.] )
           branches[checkpoint][variable + "_CLOSURE" + shift_] = rTree_out.Branch( "{}_{}_CLOSURE{}".format( str( variable ), disc_tags[ checkpoint ], shift_ ), arrays[checkpoint][variable + "_CLOSURE" + shift_], "{}_{}_CLOSURE{}/F".format( str(variable), disc_tags[ checkpoint ], shift_ ) );
           print( " + {}_{}_CLOSURE{}".format( str( variable ), disc_tags[ checkpoint ], shift_ ) )
@@ -250,17 +280,21 @@ def fill_tree( sample, dLocal ):
   def loop_tree( rTree_in, rTree_out, i ):
     rTree_in.GetEntry(i)
     for checkpoint in checkpoints:
-      arrays[ checkpoint ][ "transfer_{}".format( disc_tags[ checkpoint ] ) ][0] = transfers[ checkpoint ]
       for j, variable in enumerate( variables_transform[ checkpoint ] ):
         arrays[checkpoint][variable][0] = predictions[checkpoint]["NOM"][i][j]
+        if args.regression:
+          arrays[checkpoint][variable+"_REG"][0] = regression_fit( getattr(rTree_in,variable), shift = "NOM" )
         for shift_ in [ "UP", "DN" ]:
           arrays[checkpoint][variable + "_PEAK" + shift_][0] = shift_peak( predictions[checkpoint]["NOM"][i][j], float( means_pred[checkpoint][j] ), float( sigmas_pred[checkpoint][j] ), closure[checkpoint], shift_ )
           arrays[checkpoint][variable + "_TAIL" + shift_][0] = shift_tail( predictions[checkpoint]["NOM"][i][j], float( means_pred[checkpoint][j] ), float( sigmas_pred[checkpoint][j] ), closure[checkpoint], shift_ )
+          if args.regression:
+            arrays[checkpoint][variable + "_REGA" + shift_][0] = regression_fit( getattr(rTree_in,variable), shift = shift_, poly = "A", mod = 0.05 )
+            arrays[checkpoint][variable + "_REGB" + shift_][0] = regression_fit( getattr(rTree_in,variable), shift = shift_, poly = "B", mod = 0. )
           if checkpoint in closure:
             arrays[checkpoint][variable + "_CLOSURE" + shift_][0] = predictions[checkpoint]["CLOSURE" + shift_][i][j]
     rTree_out.Fill()
   
-  for i in range( rTree_in.GetEntries() ): 
+  for i in tqdm(range( rTree_in.GetEntries() )): 
     loop_tree( rTree_in, rTree_out, i )    
 
   rTree_out.Write()

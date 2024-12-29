@@ -1,11 +1,14 @@
-# this script has two modes:
-#   1. retrieve the MMD loss in the signal region for a given network and source/target dataset(s) (default)
-#   2. calculate the systematic uncertainty of the model using dropout in inference
-#   3. calculate the non-closure uncertainty for extended ABCD in region D
-# this script should be run in mode 2 prior to the apply_abcdnn.py script such that the systematic uncertainties
-# are added as branches to the ABCDnn ntuple
-#
-# last updated by daniel_li2@brown.edu on 08-17-2022
+'''
+this script has four modes:
+  1. retrieve the MMD loss in the signal region for a given network and source/target dataset(s) (default)
+  2. calculate the systematic uncertainty of the model using dropout in inference
+  3. calculate the non-closure uncertainty for extended ABCD in region D
+  4. perform regression fit for input vs output 
+this script should be run in mode 2 prior to the apply_abcdnn.py script such that the systematic uncertainties
+are added as branches to the ABCDnn ntuple
+
+last updated by daniel_li2@brown.edu on 11-05-2024
+'''
 
 import os
 import numpy as np
@@ -16,6 +19,7 @@ from json import loads as load_json
 from json import dumps as dump_json
 from array import array
 import ROOT
+from scipy.optimize import curve_fit
 
 os.environ["KERAS_BACKEND"] = "tensorflow"
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
@@ -38,6 +42,7 @@ parser.add_argument( "--closure", action = "store_true", help = "Get the closure
 parser.add_argument( "--yields", action = "store_true", help = "Get the statistical uncertainty of predicted yield and add to the .json" )
 parser.add_argument( "--stats", action = "store_true", help = "Get mean and RMS of ABCDnn output and add to .json" )
 parser.add_argument( "--transfer", action = "store_true", help = "Calculate transfer factors and add to .json" )
+parser.add_argument( "--regression", action = "store_true", help = "Calculate a polynomial fit between input and output" )
 parser.add_argument( "--verbose", action = "store_true" )
 args = parser.parse_args()
 
@@ -157,33 +162,16 @@ def get_loss( model, source, target, region, bSize, nBatches, bayesian = False, 
   else:
     print( "[START] Evaluating MMD loss for {} batches of size {}".format( nBatches, bSize ) )
   loss = []
-  loss_closure = { "A": [], "B": [] }
   for i in range( nBatches ):
     sBatch, tBatch = get_batch( source, target, bSize, region )
     sPred = model( sBatch.astype( "float32" ), training = bayesian ) # applying prediction when getting the loss
-    if closure:
-      loss_A = abcdnn.mix_rbf_mmd2( tf.constant( sPred[:,0], shape = [ bSize, 1 ] ), tf.constant( tBatch[:,0].astype( "float32" ), shape = [ bSize, 1 ] ), sigmas = config.params[ "MODEL" ][ "MMD SIGMAS" ], wts = config.params[ "MODEL" ][ "MMD WEIGHTS" ] )
-      loss_B = abcdnn.mix_rbf_mmd2( tf.constant( sPred[:,1], shape = [ bSize, 1 ] ), tf.constant( tBatch[:,1].astype( "float32" ), shape = [ bSize, 1 ] ), sigmas = config.params[ "MODEL" ][ "MMD SIGMAS" ], wts = config.params[ "MODEL" ][ "MMD WEIGHTS" ] )
-      if args.verbose: print( "  Batch {:<4}: Loss A = {:.4f}, Loss B = {:.4}".format( str( i + 1 ) + ".", loss_A, loss_B ) )
-      loss_closure[ "A" ].append( loss_A )
-      loss_closure[ "B" ].append( loss_B )
-    iLoss = abcdnn.mix_rbf_mmd2( sPred, tBatch[:,:2].astype( "float32" ), sigmas = config.params[ "MODEL" ][ "MMD SIGMAS" ], wts = config.params[ "MODEL" ][ "MMD WEIGHTS" ] )
-    if args.verbose: print( "  Batch {:<4}: {:.4f}".format( str( i + 1 ) + ".", iLoss ) )
-    loss.append( iLoss )
-  lMean = np.mean( loss )
-  lStd = np.std( loss )
-  if closure: 
-    lMean_A = np.mean( loss_closure[ "A" ] )
-    lMean_B = np.mean( loss_closure[ "B" ] )
-    lStd_A = np.std( loss_closure[ "A" ] )
-    lStd_B = np.std( loss_closure[ "B" ] )
-    print( "[ABCDNN] Closure: {:.4f}%".format( abs( 100. * ( lMean_A - lMean_B ) / lMean ) ) )
-    print( "  + Combined Loss: {:.4f} pm {:.4f}".format( lMean, lStd ) )
-    print( "  + Loss A: {:.4f} pm {:.4f}".format( lMean_A, lStd_A ) )
-    print( "  + Loss B: {:.4f} pm {:.4f}".format( lMean_B, lStd_B ) )
-    return lMean_A, lMean_B, lStd_A, lStd_B
-  else:
-    return lMean, lStd
+    loss_i = abcdnn.mix_rbf_mmd2( tf.constant( sPred[:,0], shape = [ bSize, 1 ] ), tf.constant( tBatch[:,0].astype( "float32" ), shape = [ bSize, 1 ] ), sigmas = config.params[ "MODEL" ][ "MMD SIGMAS" ], wts = config.params[ "MODEL" ][ "MMD WEIGHTS" ] )
+    loss.append(loss_i)
+    print("  + Batch {} loss: {:.4f}".format(i,loss_i))
+
+  print("[INFO] Average loss across {} batches: {:.4f} pm {:.4f}".format(nBatches,np.mean(loss),np.std(loss)))
+
+  return np.mean(loss), np.std(loss)
 
 def extended_ABCD( X, Y, A, B, C ):
   yield_pred = float( B * X * C**2 / ( A**2 * Y ) )
@@ -223,13 +211,32 @@ def get_transfer( model, source, target, minor ):
 
   return transfer_factor
 
+def regression_fit( model, source_norm, source, variables, tag ):
+  variable_transform = ""
+  with open( os.path.join( "Results/", tag+".json" ), "r+" ) as f:
+    params = load_json( f.read() )
+  means = np.hstack( [ float(mean) for mean in params["INPUTMEANS"] ] )
+  sigmas = np.hstack( [ float(sigma) for sigma in params["INPUTSIGMAS"] ] )
+  sPred = model( source_norm["D"] ) * sigmas[0] + means[0]
+  for variable in variables:
+    if variables[variable]["TRANSFORM"]:
+      variable_transform = variable
+  fit_params = np.polyfit(source["D"][variable_transform][::50],sPred[::50],2)
+  print(fit_params)
+  with open( os.path.join( "Results/", args.postfix+".json" ), "r+" ) as f:
+    params = load_json( f.read() )
+  params.update( { "FIT PARAMS": fit_params.tolist() } )
+  with open( "Results/{}.json".format( args.postfix ), "w" ) as f:
+    f.write( dump_json( params, indent = 2 ) )
+
+
 def get_stats( model, source, region, bSize, tag ):
   sBatch, tbatch = get_batch( source, source, bSize, region ) 
   sPred = model( sBatch.astype( "float32" ) )
   with open( os.path.join( "Results/", tag + ".json" ), "r+" ) as f:
     params = load_json( f.read() )
   means = np.hstack( [ float( mean ) for mean in params[ "INPUTMEANS" ] ] )
-  sigmas = np.hstack( [ float( sigma ) for sigma in params [ "INPUTSIGMAS" ] ] )
+  sigmas = np.hstack( [ float( sigma ) for sigma in params[ "INPUTSIGMAS" ] ] )
   mean_pred = np.mean( sPred * sigmas[0:2] + means[0:2], axis = 0 )
   std_pred = np.std( sPred * sigmas[0:2] + means[0:2], axis = 0 )
   params.update( { "SIGNAL_MEAN": [ str(mean) for mean in mean_pred ] } )
@@ -255,5 +262,7 @@ def main():
     get_stats( NAF, source_data, args.region, int( args.size ), args.postfix )
   if args.transfer:
     get_transfer( NAF, all_data[ "SOURCE" ], all_data[ "TARGET" ], all_data[ "MINOR" ] ) 
+  if args.regression:
+    regression_fit( NAF, source_data, all_data[ "SOURCE" ], config.variables, args.postfix ) 
 
 main()

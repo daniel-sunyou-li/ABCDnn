@@ -24,6 +24,11 @@ args = parser.parse_args()
 
 if args.location not in [ "LPC", "BRUX" ]: quit( "[ERR] Invalid -l (--location) argument used. Quitting..." )
 
+if args.location in "BRUX":
+  sourceDir = config.sourceDir["BRUX"]
+else:
+  sourceDir = config.sourceDir["LPC"]
+
 print( "[INFO] Evaluating cross section weights." )
 weightXSec = {}
 if args.doMinorMC:
@@ -40,16 +45,16 @@ for f in files:
   if args.doMinorMC or args.doMajorMC or args.doClosureMC:
     nMC = 0
     if "TTToSemiLeptonic" in f and "HT0Njet0_ttjj" in f:
-      rF_ = ROOT.TFile.Open( os.path.join( config.sourceDir[ "BRUX" ], config.sampleDir[ args.year ], "TTToSemiLeptonic_TuneCP5_13TeV-powheg-pythia8_HT0Njet0_tt1b_hadd.root" ).replace( "step3", "step1hadds" ) )
+      rF_ = ROOT.TFile.Open( os.path.join( sourceDir, config.sampleDir[ args.year ], "TTToSemiLeptonic_TuneCP5_13TeV-powheg-pythia8_HT0Njet0_tt1b_hadd.root" ).replace( "step3", "step1hadds" ) )
       rT_ = rF_.Get( "NumTrueHist" ).Clone( "NumTrueHist" )
       nMC = rT_.Integral()
     elif "TTTT" in f and args.year == "2018":
       for i in range(1,4):
-        rF_ = ROOT.TFile.Open( os.path.join( config.sourceDir[ "BRUX" ], config.sampleDir[ args.year ], "TTTT_TuneCP5_13TeV-amcatnlo-pythia8_{}_hadd.root".format(i) ).replace( "step3", "step1hadds" ) )
+        rF_ = ROOT.TFile.Open( os.path.join( sourceDir, config.sampleDir[ args.year ], "TTTT_TuneCP5_13TeV-amcatnlo-pythia8_{}_hadd.root".format(i) ).replace( "step3", "step1hadds" ) )
         rT_ = rF_.Get( "NumTrueHist" ).Clone( "NumTrueHist" )
         nMC += rT_.Integral()
     else:
-      rF_ = ROOT.TFile.Open( os.path.join( config.sourceDir[ "BRUX" ], config.sampleDir[ args.year ], f ).replace( "step3", "step1hadds" ) )
+      rF_ = ROOT.TFile.Open( os.path.join( sourceDir, config.sampleDir[ args.year ], f ).replace( "step3", "step1hadds" ) )
       rT_ = rF_.Get( "NumTrueHist" ).Clone( "NumTrueHist" )
       nMC = rT_.Integral()
     weightXSec[f] = xsec.lumi[ args.year ] * xsec.xsec[f] / nMC
@@ -121,9 +126,9 @@ def format_ntuple( inputs, output, trans_var, weight = None ):
   for f in inputs:
     print( ">> Processing {}".format( f ) )
     if args.location == "LPC":
-      rPath = os.path.join( config.sourceDir[ "LPC" ], sampleDir, f )
+      rPath = os.path.join( sourceDir, sampleDir, f )
     elif args.location == "BRUX":
-      rPath = os.path.join( config.sourceDir[ "BRUX" ].replace( "/isilon/hadoop", "" ), sampleDir, f )
+      rPath = os.path.join( sourceDir, sampleDir, f )
     rDF = ROOT.RDataFrame( "ljmet", rPath )
     sample_total = rDF.Count().GetValue()
     filter_string = "" 
